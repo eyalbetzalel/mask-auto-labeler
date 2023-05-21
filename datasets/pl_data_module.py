@@ -36,15 +36,15 @@ datapath_configs = dict(
             val_img_data_dir='data/coco/val2017', 
             test_img_data_dir='data/coco/test2017',
             dataset_type='coco',
-            train_ann_path="data/coco/annotations/boxes_train2017.json",
+            train_ann_path="data/coco/annotations/instances_train2017.json",
             val_ann_path="data/coco/annotations/instances_val2017.json",
         ),
         generating_pseudo_label_config=dict(
             train_img_data_dir='data/coco/train2017', 
-            train_ann_path="data/coco/annotations/boxes_train2017.json",
+            train_ann_path="data/coco/annotations/instances_train2017.json",
             val_img_data_dir='data/coco/train2017', 
             dataset_type='coco',
-            val_ann_path="data/coco/annotations/boxes_train2017.json",
+            val_ann_path="data/coco/annotations/instances_train2017.json",
         )
     ),
     coco_original=dict(
@@ -53,7 +53,7 @@ datapath_configs = dict(
             val_img_data_dir='data/coco/train2017', 
             test_img_data_dir='data/coco/test2017',
             dataset_type='coco',
-            train_ann_path="data/coco/annotations/boxes_train2017.json",
+            train_ann_path="data/coco/annotations/instances_train2017.json",
             val_ann_path="data/coco/annotations/instances_val2017.json",
         ),
         generating_pseudo_label_config=dict(
@@ -77,10 +77,10 @@ datapath_configs = dict(
         ),
         generating_pseudo_label_config=dict(
             train_img_data_dir='data/coco/train2017', 
-            train_ann_path="data/coco/annotations/boxes_train2017.json",
+            train_ann_path="data/coco/annotations/instances_train2017.json",
             val_img_data_dir='data/coco/train2017', 
             dataset_type='coco',
-            val_ann_path="data/coco/annotations/boxes_train2017.json",
+            val_ann_path="data/coco/annotations/instances_train2017.json",
         )
     ),
     lvis=dict(
