@@ -18,8 +18,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import loggers as pl_loggers
 
 from datasets.pl_data_module import WSISDataModule, datapath_configs
-import sys
-sys.setrecursionlimit(10000)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()

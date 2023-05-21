@@ -24,8 +24,7 @@ import cv2
 import pickle
 
 import time
-import sys
-sys.setrecursionlimit(10000)
+
 
 CLASS_NAMES = [
 		"aeroplane",
