@@ -24,7 +24,8 @@ import cv2
 import pickle
 
 import time
-
+import sys
+sys.setrecursionlimit(10000)
 
 CLASS_NAMES = [
 		"aeroplane",
@@ -208,6 +209,7 @@ class InstSegVOC(BoxLabelVOC):
         img_info = self.coco.loadImgs(ann['image_id'])[0]
         h, w, file_name = img_info['height'], img_info['width'], img_info['file_name']
         img = self.get_image(file_name)
+        # img = self.get_image(os.path.join(os.getcwd(),self.args[1], file_name))
         if img is None:
             return self[torch.randint(0, len(self), (1,))[0]]
 
