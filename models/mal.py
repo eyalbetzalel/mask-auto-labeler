@@ -43,7 +43,7 @@ from datasets.data_aug import Denormalize
 from datasets.pl_data_module import datapath_configs, num_class_dict
 from utils.optimizers.adamw import AdamWwStep
 
-
+from models.MultiModelCrf import visualize_and_save_feature_map
 
 class MeanField(nn.Module):
 
@@ -61,10 +61,31 @@ class MeanField(nn.Module):
         seg = torch.clamp(seg, min=self.low_thres, max=self.high_thres)
         return seg
 
+    def depth_similarity(self, depth_map):
+        # Creating a kernel for comparison
+        kernel_size = self.kernel_size
+        self.unfold = torch.nn.Unfold(kernel_size, stride=1, padding=self.kernel_size // 2)
+        B, H, W = depth_map.shape
+
+        # Unfold depth_map [B, kernel_size ** 2, H*W]
+        unfold_depth_map = self.unfold(depth_map).reshape(B, kernel_size**2, H * W)
+
+        # Calculate depth difference (depth similarity)
+        depth_diff = unfold_depth_map - depth_map.reshape(B, 1, H*W)
+        
+        # Compute depth similarity with Gaussian kernel, you may need to adjust the variance (sigma)
+        sigma = 1.0
+        depth_sim_map = torch.exp(-(depth_diff**2) / (2*sigma**2))
+
+        return depth_sim_map
+
+
     @torch.no_grad()
     def forward(self, feature_map, seg, targets=None):
 
         feature_map = feature_map.float()
+        visualize_and_save_feature_map(feature_map, 'feature_map.png')
+
         kernel_size = self.kernel_size
         B, H, W = seg.shape
         C = feature_map.shape[1]
@@ -77,6 +98,18 @@ class MeanField(nn.Module):
         # B, kernel_size**2, H*W
         kernel = torch.exp(-(((unfold_feature_map - feature_map.reshape(B, C, 1, H*W)) ** 2) / (2 * self.zeta ** 2)).sum(1))
         
+        # TODO 1: Bring depth estimation here 
+        # Estimate depth
+        # depth_map = self.depth_estimation(feature_map)
+
+        # TODO 2: Calc similiraty of each pixel to other 
+        # Calculate depth similarity
+        # depth_sim_map = self.depth_similarity(depth_map)
+
+        # TODO 3: Incorporate depth similarity into the kernel 
+        # kernel = kernel * depth_sim_map
+
+    
         if targets is not None:
             t = targets.reshape(B, H, W)
             seg = seg * t
