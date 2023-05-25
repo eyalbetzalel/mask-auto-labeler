@@ -43,7 +43,9 @@ from datasets.data_aug import Denormalize
 from datasets.pl_data_module import datapath_configs, num_class_dict
 from utils.optimizers.adamw import AdamWwStep
 
-from models.MultiModelCrf import visualize_and_save_feature_map
+from models.MultiModelCrf import visualize_and_save_feature_map, visualize_and_save_depth_map
+from models.prismer.experts.generate_depth import model as model_depth
+model_depth = model_depth.cuda()
 
 class MeanField(nn.Module):
 
@@ -73,9 +75,8 @@ class MeanField(nn.Module):
         # Calculate depth difference (depth similarity)
         depth_diff = unfold_depth_map - depth_map.reshape(B, 1, H*W)
         
-        # Compute depth similarity with Gaussian kernel, you may need to adjust the variance (sigma)
-        sigma = 1.0
-        depth_sim_map = torch.exp(-(depth_diff**2) / (2*sigma**2))
+        # Compute depth similarity with Gaussian kernel, TODO : adjust the variance (sigma)
+        depth_sim_map = torch.exp(-(depth_diff**2) / (2 * self.zeta **2))
 
         return depth_sim_map
 
@@ -84,8 +85,7 @@ class MeanField(nn.Module):
     def forward(self, feature_map, seg, targets=None):
 
         feature_map = feature_map.float()
-        visualize_and_save_feature_map(feature_map, 'feature_map.png')
-
+        # visualize_and_save_feature_map(feature_map, 'feature_map.png')
         kernel_size = self.kernel_size
         B, H, W = seg.shape
         C = feature_map.shape[1]
@@ -98,16 +98,15 @@ class MeanField(nn.Module):
         # B, kernel_size**2, H*W
         kernel = torch.exp(-(((unfold_feature_map - feature_map.reshape(B, C, 1, H*W)) ** 2) / (2 * self.zeta ** 2)).sum(1))
         
-        # TODO 1: Bring depth estimation here 
         # Estimate depth
-        # depth_map = self.depth_estimation(feature_map)
+        depth_map = model_depth(feature_map)
+        # visualize_and_save_depth_map(depth_map, 'depth_map.png')
 
-        # TODO 2: Calc similiraty of each pixel to other 
         # Calculate depth similarity
-        # depth_sim_map = self.depth_similarity(depth_map)
+        depth_sim_map = self.depth_similarity(depth_map)
 
         # TODO 3: Incorporate depth similarity into the kernel 
-        # kernel = kernel * depth_sim_map
+        kernel = kernel * depth_sim_map
 
     
         if targets is not None:
