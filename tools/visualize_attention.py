@@ -42,7 +42,7 @@ from torchvision import transforms as pth_transforms
 import numpy as np
 from PIL import Image
 
-from models import vision_transformer
+from models.prismer.dataset import vision_transformer
 from utils import dino_utils as utils
 
 import importlib.util

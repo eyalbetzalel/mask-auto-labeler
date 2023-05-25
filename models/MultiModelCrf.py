@@ -2,11 +2,8 @@ import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 import torch
 
-import sys
-sys.path.append('/workspace/prismer')  
-
-from experts.generate_depth_crf import model
-from experts.depth.generate_dataset import Dataset, EyalDataset
+from prismer.experts.generate_depth import model
+# from experts.depth.generate_dataset import Dataset, EyalDataset
 
 def visualize_and_save_feature_map(feature_map, file_name):
     # Ensure the tensor is on the CPU
