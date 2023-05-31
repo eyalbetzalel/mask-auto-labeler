@@ -85,7 +85,8 @@ class MeanField(nn.Module):
     def forward(self, feature_map, seg, targets=None):
 
         feature_map = feature_map.float()
-        # visualize_and_save_feature_map(feature_map, 'feature_map.png')
+        orig_seg_map = (seg > 0.5).float()
+        visualize_and_save_feature_map(feature_map, orig_seg_map, 'feature_map.png')
         kernel_size = self.kernel_size
         B, H, W = seg.shape
         C = feature_map.shape[1]
@@ -94,7 +95,7 @@ class MeanField(nn.Module):
         # feature_map [B, C, H, W]
         feature_map = feature_map + 10
         # unfold_feature_map [B, C, kernel_size ** 2, H*W]
-        unfold_feature_map = self.unfold(feature_map).reshape(B, C, kernel_size**2, H * W)
+        unfold_feature_map = self.unfold(feature_map).reshape(B, C, kernel_size**2, H * W) # torch.Size([4, 3, 9, 16384])
         # B, kernel_size**2, H*W
         kernel = torch.exp(-(((unfold_feature_map - feature_map.reshape(B, C, 1, H*W)) ** 2) / (2 * self.zeta ** 2)).sum(1))
         
