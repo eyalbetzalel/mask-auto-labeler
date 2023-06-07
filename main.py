@@ -26,7 +26,7 @@ def parse_args():
     # load config
     parser.add_argument("--val_only", action='store_true', default=False)
     parser.add_argument("--box_inputs", type=str, default=None)
-    parser.add_argument("--resume", type=str, default=None, help='Weight name to be resumed')
+    parser.add_argument("--resume", type=str, default="/workspace/mask-auto-labeler/work_dirs/coco/epoch=6-arch=vit-mae-base-16-not_adjust_scale=False-mask_scale_ratio_pre=1.ckpt", help='Weight name to be resumed')
     parser.add_argument('--val_interval', default=1, type=int)
 
     # Dataset
@@ -35,7 +35,7 @@ def parse_args():
     parser.add_argument('--dataset_type', default='coco', type=str, choices=datapath_configs.keys())
 
     # Hyperparameter
-    parser.add_argument('--batch_size', default=4, type=int)
+    parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--accum_grad_batches', default=1, type=int)
     parser.add_argument('--min_obj_size', default=2048, type=int)
     parser.add_argument('--max_obj_size', default=1e10, type=int)

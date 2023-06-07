@@ -43,7 +43,7 @@ from datasets.data_aug import Denormalize
 from datasets.pl_data_module import datapath_configs, num_class_dict
 from utils.optimizers.adamw import AdamWwStep
 
-from models.MultiModelCrf import visualize_and_save_feature_map, visualize_and_save_depth_map
+from models.MultiModelCrf import visualize_and_save_feature_map, visualize_and_save_depth_map, visualize_and_save_batch, visualize_and_save_all
 from models.prismer.experts.generate_depth import model as model_depth
 model_depth = model_depth.cuda()
 
@@ -83,10 +83,14 @@ class MeanField(nn.Module):
 
     @torch.no_grad()
     def forward(self, feature_map, seg, targets=None):
-
+        
+        #################################################################################################################
+        orig_image = feature_map.float()
+        orig_seg = seg
+        orig_mask = (seg > 0.5).float()
+        #################################################################################################################
+        
         feature_map = feature_map.float()
-        orig_seg_map = (seg > 0.5).float()
-        visualize_and_save_feature_map(feature_map, orig_seg_map, 'feature_map.png')
         kernel_size = self.kernel_size
         B, H, W = seg.shape
         C = feature_map.shape[1]
@@ -107,7 +111,7 @@ class MeanField(nn.Module):
         depth_sim_map = self.depth_similarity(depth_map)
 
         # TODO 3: Incorporate depth similarity into the kernel 
-        kernel = kernel * depth_sim_map
+        kernel_wdepth = kernel * depth_sim_map
 
     
         if targets is not None:
@@ -121,7 +125,25 @@ class MeanField(nn.Module):
         for it in range(self.num_iter):
             seg = self.single_forward(seg, kernel, t, B, H, W, it)
 
-        return (seg > 0.5).float()
+        ############################################################################################################
+
+        seg_after_rgb = seg
+        rgb_mask = (seg_after_rgb > 0.5).float()
+        seg = orig_seg
+
+        seg = self.trunc(seg)
+
+        for it in range(self.num_iter):
+            seg = self.single_forward(seg, kernel_wdepth, t, B, H, W, it)
+
+        seg_after_rgb_depth = seg
+        mask_rgb_depth = (seg_after_rgb_depth > 0.5).float()
+        #visualize_and_save_batch(orig_image, orig_mask, "orig", text="Original Segmentation", plot_orig=True)
+        visualize_and_save_batch(orig_image, rgb_mask, "rgb", text="RGB CRF Segmentation", plot_orig=False)
+        #visualize_and_save_batch(orig_image, mask_rgb_depth, "depth", text="Depth CRF Segmentation", plot_orig=False)
+        visualize_and_save_all(feature_map, seg_original=orig_mask, seg_rgb=rgb_mask, seg_depth=mask_rgb_depth,depth_map=depth_map, base_file_name="grid")
+
+        return (seg_after_rgb > 0.5).float()
 
     def single_forward(self, x, kernel, targets, B, H, W, it):
         x = x[:, None]
