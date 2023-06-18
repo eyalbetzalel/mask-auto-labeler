@@ -14,6 +14,7 @@ import numpy as np
 from torchvision import transforms
 from torch._six import string_classes
 import collections
+import torchvision.transforms.functional as F
 
 from torch.utils.data._utils.collate import default_collate
 from torch.utils.data._utils.collate import (default_collate_err_msg_format, 
