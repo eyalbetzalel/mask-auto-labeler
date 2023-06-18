@@ -15,6 +15,7 @@ from .objects365 import InstSegObjects365LMDB, BoxLabelObjects365LMDB, BoxLabelO
 from .data_aug import data_aug_pipelines, custom_collate_fn
 from .lvis import InstSegLVIS, BoxLabelLVIS, BoxLabelLVISLMDB, InstSegLVISLMDB, InstSegLVISwithBoxInput
 from .ytvis import BoxLabelYTVIS, InstSegYTVIS
+from .cityscapes import BoxLabelCityscapes
 
 
 num_class_dict = {
@@ -25,7 +26,8 @@ num_class_dict = {
     'voc': 21,
     'lvis': 1302,
     'ytvis': 41,
-    'astro': 81
+    'astro': 81,
+    'cityscapes': 34,  # 33 classes + 1 background class in CityScapes
 }
 
 
@@ -146,7 +148,26 @@ datapath_configs = dict(
             train_ann_path="/astro_coco_json/ext_arms_rw_only_worot.json",
             val_ann_path="/astro_coco_json/ext_arms_rw_only_worot.json"
         ),
+    ),
+    cityscapes=dict(
+        training_config=dict(
+            train_img_data_dir='data/cityscapes/leftImg8bit/train', 
+            val_img_data_dir='data/cityscapes/leftImg8bit/val', 
+            test_img_data_dir='data/cityscapes/leftImg8bit/test',
+            dataset_type='cityscapes',
+            train_ann_path="data/cityscapes/gtFine/train",
+            val_ann_path="data/cityscapes/gtFine/val",
+        ),
+        generating_pseudo_label_config=dict(
+            train_img_data_dir='data/cityscapes/leftImg8bit/train', 
+            train_ann_path="data/cityscapes/gtFine/train",
+            val_img_data_dir='data/cityscapes/leftImg8bit/val', 
+            dataset_type='cityscapes',
+            val_ann_path="data/cityscapes/gtFine/val",
+        )
     )
+
+
 )
 
 class WSISDataModule(pl.LightningDataModule):
@@ -186,6 +207,8 @@ class WSISDataModule(pl.LightningDataModule):
                 build_dataset = BoxLabelLVIS
             elif self.args.dataset_type == 'ytvis':
                 build_dataset = BoxLabelYTVIS
+            elif self.args.dataset_type == 'cityscapes':
+                build_dataset = BoxLabelCityscapes
             else:
                 raise NotImplementedError
             datapath_config = datapath_configs[self.args.dataset_type]
@@ -215,6 +238,8 @@ class WSISDataModule(pl.LightningDataModule):
                     build_dataset = InstSegLVIS
                 elif self.args.dataset_type == 'ytvis':
                     build_dataset = InstSegYTVIS
+                elif self.args.dataset_type == 'cityscapes':
+                    build_dataset = BoxLabelCityscapes
                 else:
                     raise NotImplementedError
                 datapath_config = datapath_configs[self.args.dataset_type]
