@@ -226,8 +226,7 @@ class MALStudentNetwork(pl.LightningModule):
 
     def configure_sharded_model(self):
         self.backbone = auto_wrap(self.backbone)
-
-
+    
     def forward(self, x, boxmask, bboxes):
         x = x.half()
         feat = self.backbone.base_forward(x)

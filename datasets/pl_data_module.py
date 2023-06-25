@@ -74,40 +74,40 @@ num_class_dict = {
 
 
 datapath_configs = dict(
-    coco=dict(
-        training_config=dict(
-            train_img_data_dir='data/cityscapes/leftImg8bit/train', 
-            val_img_data_dir='data/cityscapes/leftImg8bit/val', 
-            test_img_data_dir='data/cityscapes/leftImg8bit/test',
-            dataset_type='coco',
-            train_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
-            val_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_val.json",
-        ),
-        generating_pseudo_label_config=dict(
-            train_img_data_dir='data/cityscapes/leftImg8bit/train', 
-            train_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
-            val_img_data_dir='data/cityscapes/leftImg8bit/train', 
-            dataset_type='coco',
-            val_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
-        )
-    ),
     # coco=dict(
     #     training_config=dict(
-    #         train_img_data_dir='data/coco/train2017', 
-    #         val_img_data_dir='data/coco/val2017', 
-    #         test_img_data_dir='data/coco/test2017',
+    #         train_img_data_dir='data/cityscapes/leftImg8bit/train', 
+    #         val_img_data_dir='data/cityscapes/leftImg8bit/val', 
+    #         test_img_data_dir='data/cityscapes/leftImg8bit/test',
     #         dataset_type='coco',
-    #         train_ann_path="data/coco/annotations/instances_train2017.json",
-    #         val_ann_path="data/coco/annotations/instances_val2017.json",
+    #         train_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
+    #         val_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_val.json",
     #     ),
     #     generating_pseudo_label_config=dict(
-    #         train_img_data_dir='data/coco/train2017', 
-    #         train_ann_path="data/coco/annotations/instances_train2017.json",
-    #         val_img_data_dir='data/coco/train2017', 
+    #         train_img_data_dir='data/cityscapes/leftImg8bit/train', 
+    #         train_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
+    #         val_img_data_dir='data/cityscapes/leftImg8bit/train', 
     #         dataset_type='coco',
-    #         val_ann_path="data/coco/annotations/instances_train2017.json",
+    #         val_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
     #     )
     # ),
+    coco=dict(
+        training_config=dict(
+            train_img_data_dir='data/coco/train2017', 
+            val_img_data_dir='data/coco/val2017', 
+            test_img_data_dir='data/coco/test2017',
+            dataset_type='coco',
+            train_ann_path="data/coco/annotations/instances_train2017.json",
+            val_ann_path="data/coco/annotations/instances_val2017.json",
+        ),
+        generating_pseudo_label_config=dict(
+            train_img_data_dir='data/coco/train2017', 
+            train_ann_path="data/coco/annotations/instances_train2017.json",
+            val_img_data_dir='data/coco/train2017', 
+            dataset_type='coco',
+            val_ann_path="data/coco/annotations/instances_train2017.json",
+        )
+    ),
     coco_original=dict(
         training_config=dict(
             train_img_data_dir='data/coco/train2017', 

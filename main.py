@@ -27,6 +27,7 @@ def parse_args():
     parser.add_argument("--val_only", action='store_true', default=False)
     parser.add_argument("--box_inputs", type=str, default=None)
     parser.add_argument("--resume", type=str, default="/workspace/mask-auto-labeler/epoch=6-arch=vit-mae-base-16-not_adjust_scale=False-mask_scale_ratio_pre=1.ckpt", help='Weight name to be resumed')
+    # parser.add_argument("--resume", type=str, default=None, help='Weight name to be resumed')
     parser.add_argument('--val_interval', default=1, type=int)
 
     # Dataset
@@ -46,7 +47,9 @@ def parse_args():
     parser.add_argument('--optim_momentum', default=0.9, type=float)
     # parameters for annealLR + adamW
     parser.add_argument('--lr', default=0.0000015, type=float)
+    # parser.add_argument('--lr', default=0.000000000015, type=float)
     parser.add_argument('--min_lr_rate', default=0.2, type=float)
+    # parser.add_argument('--min_lr_rate', default=0, type=float)
     parser.add_argument('--num_wave', default=1, type=float)
     parser.add_argument('--wd', default=0.0005, type=float)
     parser.add_argument('--optim_eps', default=1e-8, type=float)
@@ -58,7 +61,7 @@ def parse_args():
     parser.add_argument('--max_epochs', default=10, type=int)
     parser.add_argument('--save_every_k_epoch', default=1, type=int)
 
-    parser.add_argument('--image_size', default=512, type=int)
+    parser.add_argument('--image_size', default=2048, type=int)
     parser.add_argument('--margin_rate', default="0,1.2", type=str)
     parser.add_argument('--test_margin_rate', default='0.6,0.6', type=str)
     parser.add_argument('--crop_size', default=512, type=int)
@@ -104,7 +107,7 @@ def parse_args():
     parser.add_argument('--use_teacher_test', action='store_true', default=False)
     parser.add_argument('--use_flip_test', action='store_true', default=False)
     parser.add_argument('--use_crf_test', action='store_true', default=False)
-    parser.add_argument('--not_eval_mask', action='store_true', default=False)
+    parser.add_argument('--not_eval_mask', action='store_true', default=True)
     parser.add_argument('--comp_clustering', action='store_true', default=False)
 
     # Generating mask pseudo-labels
