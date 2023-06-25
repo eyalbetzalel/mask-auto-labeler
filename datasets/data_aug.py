@@ -48,7 +48,7 @@ def custom_crop_image(img, box):
 
     ret_shape = list(img.shape)
     ret_shape[:2] = box[3] - box[1], box[2] - box[0]
-    h, w = img.shape[:2]
+    h, w = img.shape[:2] 
 
     ret_img = np.zeros(ret_shape)
 

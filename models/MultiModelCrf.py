@@ -3,7 +3,7 @@ import torchvision.transforms as transforms
 import torch
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
-
+import os
 
 def visualize_and_save_feature_map(feature_map, segmentation_layer, file_name):
 
@@ -227,6 +227,24 @@ def visualize_and_save_all(feature_map, seg_original, seg_rgb, seg_depth, depth_
 
         plt.subplots_adjust(wspace=0.01, hspace=0.01) # reduce spacing
         plt.tight_layout(pad=0.5) # Here we set the padding to a smaller value to get the subplots closer
+
+        # Original file name
+        original_file_name = base_file_name + f"_combined_{i}.png"
+
+        # Check if the file name already exists
+        if os.path.exists(original_file_name):
+            # If the file name already exists, modify it
+            file_name_counter = 1
+            while True:
+                modified_file_name = base_file_name + f"_combined_{i}_{file_name_counter}.png"
+                if not os.path.exists(modified_file_name):
+                    break
+                file_name_counter += 1
+            # Use the modified file name
+            plt.savefig(modified_file_name, bbox_inches='tight', pad_inches=0)
+        else:
+            # Use the original file name
+            plt.savefig(original_file_name, bbox_inches='tight', pad_inches=0)
 
 
         plt.savefig(base_file_name + f"_combined_{i}.png", bbox_inches='tight', pad_inches=0)

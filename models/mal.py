@@ -139,7 +139,7 @@ class MeanField(nn.Module):
         seg_after_rgb_depth = seg
         mask_rgb_depth = (seg_after_rgb_depth > 0.5).float()
         #visualize_and_save_batch(orig_image, orig_mask, "orig", text="Original Segmentation", plot_orig=True)
-        visualize_and_save_batch(orig_image, rgb_mask, "rgb", text="RGB CRF Segmentation", plot_orig=False)
+        # visualize_and_save_batch(orig_image, rgb_mask, "rgb", text="RGB CRF Segmentation", plot_orig=False)
         #visualize_and_save_batch(orig_image, mask_rgb_depth, "depth", text="Depth CRF Segmentation", plot_orig=False)
         visualize_and_save_all(feature_map, seg_original=orig_mask, seg_rgb=rgb_mask, seg_depth=mask_rgb_depth,depth_map=depth_map, base_file_name="grid")
 

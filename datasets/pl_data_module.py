@@ -17,6 +17,48 @@ from .lvis import InstSegLVIS, BoxLabelLVIS, BoxLabelLVISLMDB, InstSegLVISLMDB, 
 from .ytvis import BoxLabelYTVIS, InstSegYTVIS
 from .cityscapes import BoxLabelCityscapes
 
+import matplotlib.pyplot as plt
+import numpy as np
+import cv2
+
+def save_image_with_mask_and_bbox(image_tensor, bbox, output_file):
+    # Convert the image tensor to a numpy array
+    image = image_tensor.numpy()
+    min_val = np.min(image)
+    max_val = np.max(image)
+
+    # Scale the image array from 0 to 1
+    image = (image - min_val) / (max_val - min_val)
+    image = image * 255.0
+    image = image.astype(np.uint8)
+    image = image.transpose((1,2,0))        
+    # Create a figure and axes
+    fig, ax = plt.subplots()
+
+    # Display the image
+    ax.imshow(image)
+
+    bbox = np.floor(bbox).astype(np.int32)
+
+    # Extract the bounding box coordinates
+    x1, y1, x2, y2 = bbox 
+
+    # Calculate the width and height of the bounding box
+    width = x2 - x1
+    height = y2 - y1
+
+    # Create a rectangle patch for the bounding box
+    bbox_rect = plt.Rectangle((x1, y1), width, height, fill=False, edgecolor='red', linewidth=2)
+    ax.add_patch(bbox_rect)
+
+    # Set the title
+    ax.set_title('Image with Mask and Bounding Box')
+
+    # Save the figure to a PNG file
+    plt.savefig(output_file)
+
+    # Close the figure
+    plt.close(fig)
 
 num_class_dict = {
     'coco': 81,
@@ -34,21 +76,38 @@ num_class_dict = {
 datapath_configs = dict(
     coco=dict(
         training_config=dict(
-            train_img_data_dir='data/coco/train2017', 
-            val_img_data_dir='data/coco/val2017', 
-            test_img_data_dir='data/coco/test2017',
+            train_img_data_dir='data/cityscapes/leftImg8bit/train', 
+            val_img_data_dir='data/cityscapes/leftImg8bit/val', 
+            test_img_data_dir='data/cityscapes/leftImg8bit/test',
             dataset_type='coco',
-            train_ann_path="data/coco/annotations/instances_train2017.json",
-            val_ann_path="data/coco/annotations/instances_val2017.json",
+            train_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
+            val_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_val.json",
         ),
         generating_pseudo_label_config=dict(
-            train_img_data_dir='data/coco/train2017', 
-            train_ann_path="data/coco/annotations/instances_train2017.json",
-            val_img_data_dir='data/coco/train2017', 
+            train_img_data_dir='data/cityscapes/leftImg8bit/train', 
+            train_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
+            val_img_data_dir='data/cityscapes/leftImg8bit/train', 
             dataset_type='coco',
-            val_ann_path="data/coco/annotations/instances_train2017.json",
+            val_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
         )
     ),
+    # coco=dict(
+    #     training_config=dict(
+    #         train_img_data_dir='data/coco/train2017', 
+    #         val_img_data_dir='data/coco/val2017', 
+    #         test_img_data_dir='data/coco/test2017',
+    #         dataset_type='coco',
+    #         train_ann_path="data/coco/annotations/instances_train2017.json",
+    #         val_ann_path="data/coco/annotations/instances_val2017.json",
+    #     ),
+    #     generating_pseudo_label_config=dict(
+    #         train_img_data_dir='data/coco/train2017', 
+    #         train_ann_path="data/coco/annotations/instances_train2017.json",
+    #         val_img_data_dir='data/coco/train2017', 
+    #         dataset_type='coco',
+    #         val_ann_path="data/coco/annotations/instances_train2017.json",
+    #     )
+    # ),
     coco_original=dict(
         training_config=dict(
             train_img_data_dir='data/coco/train2017', 
