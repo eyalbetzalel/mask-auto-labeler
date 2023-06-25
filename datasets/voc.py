@@ -109,7 +109,7 @@ class BoxLabelVOC(Dataset):
         return data
 
     def get_image(self, file_name):
-        # file_name = "/".join(file_name.split('/')[2:])
+        file_name = "/".join(file_name.split('/')[2:])
         try:
             image = Image.open(os.path.join(self.img_data_dir, file_name)).convert('RGB')
             #image = image.resize((640, 480))
