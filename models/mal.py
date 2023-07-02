@@ -412,9 +412,10 @@ class MAL(pl.LightningModule):
         self.automatic_optimization = False
 
     def configure_optimizers(self):
-        optimizer = AdamWwStep(self.parameters(), eps=self.args.optim_eps, 
-                                betas=self.args.optim_betas,
-                                lr=self._lr, weight_decay=self._wd)
+        # optimizer = AdamWwStep(self.parameters(), eps=self.args.optim_eps, 
+        #                         betas=self.args.optim_betas,
+        #                         lr=self._lr, weight_decay=self._wd)
+        optimizer = torch.optim.SGD(self.parameters(), lr=self._lr, momentum=0.9)
         return optimizer 
 
     def crf_loss(self, img, seg, tseg, boxmask):
@@ -510,6 +511,8 @@ class MAL(pl.LightningModule):
         self.log("train/bs", image.shape[0], on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
         optimizer.zero_grad()
         self.manual_backward(total_loss)
+        for name, param in self.student.named_parameters():
+            assert not torch.isnan(param.grad).any()
         optimizer.step()
         if self._optim_type == 'adamw':
             self.set_lr_per_iteration(optimizer, 1. * local_step)

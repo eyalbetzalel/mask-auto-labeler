@@ -36,7 +36,7 @@ def parse_args():
     parser.add_argument('--dataset_type', default='coco', type=str, choices=datapath_configs.keys())
 
     # Hyperparameter
-    parser.add_argument('--batch_size', default=4, type=int)
+    parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--accum_grad_batches', default=1, type=int)
     parser.add_argument('--min_obj_size', default=2048, type=int)
     parser.add_argument('--max_obj_size', default=1e10, type=int)
@@ -47,7 +47,7 @@ def parse_args():
     parser.add_argument('--optim_momentum', default=0.9, type=float)
     # parameters for annealLR + adamW
     parser.add_argument('--lr', default=0.0000015, type=float)
-    # parser.add_argument('--lr', default=0.000000000015, type=float)
+    # parser.add_argument('--lr', default=0, type=float)
     parser.add_argument('--min_lr_rate', default=0.2, type=float)
     # parser.add_argument('--min_lr_rate', default=0, type=float)
     parser.add_argument('--num_wave', default=1, type=float)
