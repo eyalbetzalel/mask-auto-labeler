@@ -25,7 +25,6 @@ import pickle
 
 import time
 
-
 CLASS_NAMES = [
 		"aeroplane",
 		"bicycle",
@@ -97,6 +96,7 @@ class BoxLabelVOC(Dataset):
         bbox = ann['bbox']
         x0, y0, x1, y1 = int(bbox[0]), int(bbox[1]), int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])
         mask[y0:y1+1, x0:x1+1] = 1
+
 
         data = {'image': img, 'mask': mask, 'height': h, 'width': w, 
                 'category_id': ann['category_id'], 'bbox': np.array([bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]], dtype=np.float32),

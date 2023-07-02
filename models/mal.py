@@ -59,6 +59,13 @@ class MeanField(nn.Module):
         self.low_thres = args.crf_value_low_thres
         self.args = args
 
+        # Define depth transformation
+        self.depth_transform = transforms.Compose([
+            transforms.Resize([480, 480]),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=0.5, std=0.5)
+        ])
+
     def trunc(self, seg):
         seg = torch.clamp(seg, min=self.low_thres, max=self.high_thres)
         return seg
@@ -104,8 +111,9 @@ class MeanField(nn.Module):
         kernel = torch.exp(-(((unfold_feature_map - feature_map.reshape(B, C, 1, H*W)) ** 2) / (2 * self.zeta ** 2)).sum(1))
         
         # Estimate depth
-        depth_map = model_depth(feature_map)
-        # visualize_and_save_depth_map(depth_map, 'depth_map.png')
+        feature_map_depth = self.depth_transform(feature_map)
+        depth_map = model_depth(feature_map_depth)
+        visualize_and_save_depth_map(depth_map, 'depth_map.png')
 
         # Calculate depth similarity
         depth_sim_map = self.depth_similarity(depth_map)
