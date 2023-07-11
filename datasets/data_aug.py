@@ -188,6 +188,8 @@ class RandomCropV3(RandomCropV2):
         # obtain more info
         img = np.array(data['image'])
         box = np.array(data['bbox'])
+        depth = np.array(data['depth'].permute(1, 2, 0))
+
         h, w = img.shape[0], img.shape[1]
 
         if self._random:
@@ -212,6 +214,11 @@ class RandomCropV3(RandomCropV2):
             ret_img = custom_crop_image(img, extbox)
             ret_img = Image.fromarray(ret_img.astype(np.uint8)).resize((self._max_size, self._max_size))
             data['image'] = ret_img
+
+            # crop depth
+            ret_depth = custom_crop_image(depth, extbox)
+            data['depth'] = ret_depth
+
 
         # crop mask
         if 'mask' in self._crop_fields:
@@ -401,6 +408,7 @@ class RandomFlip:
                 x['flip_records'] = 1
                 x['image'] = ImageOps.mirror(x['image'])
                 x['mask'] = x['mask'][:,::-1]
+                x['depth'] = x['depth'][:,::-1,:] 
             else:
                 x['flip_records'] = 0
         else:

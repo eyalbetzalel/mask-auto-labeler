@@ -112,12 +112,12 @@ class BoxLabelVOC(Dataset):
         depth_name = file_name.split("/")[-1].split(".")[0] + ".pt"
         depth_name = os.path.join("/workspace/mask-auto-labeler/data/cityscapes/depth_maps", depth_name)
         depth_map = torch.load(depth_name, map_location=torch.device('cpu'))
-        v=0
+        
         ############################################################################################
         data = {'image': img, 'mask': mask, 'height': h, 'width': w, 
                 'category_id': ann['category_id'], 'bbox': np.array([bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]], dtype=np.float32),
                 'compact_category_id': self.cat_mapping[int(ann['category_id'])],
-                'id': ann['id']}
+                'id': ann['id'], 'depth': depth_map}
 
         if self.transform is not None:
             data = self.transform(data)
