@@ -419,7 +419,7 @@ class RandomFlip:
                 x['flip_records'] = 1
                 x['image'] = ImageOps.mirror(x['image'])
                 x['mask'] = x['mask'][:,::-1]
-                x['depth'] = x['depth'].squeeze()[:,::-1].unsqueeze(0) 
+                x['depth'] = torch.flip(x['depth'], [2])
             else:
                 x['flip_records'] = 0
         else:
