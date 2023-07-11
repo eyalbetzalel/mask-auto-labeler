@@ -22,6 +22,7 @@ from torch.utils.data._utils.collate import (default_collate_err_msg_format,
 
 from .voc import DataWrapper
 
+import torch.nn.functional as F
 
 def custom_crop_image(img, box):
     # I implement this special `crop image` function
@@ -188,7 +189,7 @@ class RandomCropV3(RandomCropV2):
         # obtain more info
         img = np.array(data['image'])
         box = np.array(data['bbox'])
-        depth = np.array(data['depth'].permute(1, 2, 0))
+        
 
         h, w = img.shape[0], img.shape[1]
 
@@ -216,8 +217,18 @@ class RandomCropV3(RandomCropV2):
             data['image'] = ret_img
 
             # crop depth
+            depth = np.array(data['depth'].permute(1, 2, 0))
             ret_depth = custom_crop_image(depth, extbox)
+            
+            # resize depth
+            ret_depth = torch.from_numpy(ret_depth)
+            ret_depth = ret_depth.unsqueeze(0).permute(0,3,1,2)
+            ret_depth = F.interpolate(ret_depth, size=(self._max_size, self._max_size), mode='bilinear', align_corners=False)
+            ret_depth = ret_depth.squeeze().unsqueeze(0)
+            # ret_depth = ret_depth.unsqueeze(0).numpy()
             data['depth'] = ret_depth
+
+
 
 
         # crop mask
@@ -408,7 +419,7 @@ class RandomFlip:
                 x['flip_records'] = 1
                 x['image'] = ImageOps.mirror(x['image'])
                 x['mask'] = x['mask'][:,::-1]
-                x['depth'] = x['depth'][:,::-1,:] 
+                x['depth'] = x['depth'].squeeze()[:,::-1].unsqueeze(0) 
             else:
                 x['flip_records'] = 0
         else:
