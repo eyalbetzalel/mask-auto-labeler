@@ -45,7 +45,8 @@ from utils.optimizers.adamw import AdamWwStep
 
 from models.MultiModelCrf import visualize_and_save_feature_map, visualize_and_save_depth_map, visualize_and_save_batch, visualize_and_save_all
 from models.prismer.experts.generate_depth import model as model_depth
-model_depth = model_depth.cuda()
+model_depth0 = model_depth.cuda(0)
+model_depth1 = model_depth.cuda(1)
 
 class MeanField(nn.Module):
 
@@ -61,8 +62,6 @@ class MeanField(nn.Module):
 
         # Define depth transformation
         self.depth_transform = transforms.Compose([
-            transforms.Resize([480, 480]),
-            transforms.ToTensor(),
             transforms.Normalize(mean=0.5, std=0.5)
         ])
 
@@ -112,7 +111,13 @@ class MeanField(nn.Module):
         
         # Estimate depth
         feature_map_depth = self.depth_transform(feature_map)
-        depth_map = model_depth(feature_map_depth)
+
+        if feature_map_depth.device.index:
+            depth_map = model_depth1(feature_map_depth)
+        else:
+            depth_map = model_depth0(feature_map_depth)
+        
+        # depth_map = model_depth(feature_map_depth)
         visualize_and_save_depth_map(depth_map, 'depth_map.png')
 
         # Calculate depth similarity

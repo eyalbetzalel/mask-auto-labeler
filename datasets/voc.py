@@ -25,6 +25,15 @@ import pickle
 
 import time
 
+from models.prismer.experts.generate_depth import model as model_depth
+import torchvision.transforms as transforms
+
+
+# # Load depth map from file: 
+
+# depth_map_path = "/workspace/mask-auto-labeler/data/cityscapes/depth_maps.pt"
+# depth_map = torch.load(depth_map_path, map_location=torch.device('cpu'))
+
 CLASS_NAMES = [
 		"aeroplane",
 		"bicycle",
@@ -97,7 +106,14 @@ class BoxLabelVOC(Dataset):
         x0, y0, x1, y1 = int(bbox[0]), int(bbox[1]), int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])
         mask[y0:y1+1, x0:x1+1] = 1
 
+        ############################################################################################
+        # Get depth: 
 
+        depth_name = file_name.split("/")[-1].split(".")[0] + ".pt"
+        depth_name = os.path.join("/workspace/mask-auto-labeler/data/cityscapes/depth_maps", depth_name)
+        depth_map = torch.load(depth_name, map_location=torch.device('cpu'))
+        v=0
+        ############################################################################################
         data = {'image': img, 'mask': mask, 'height': h, 'width': w, 
                 'category_id': ann['category_id'], 'bbox': np.array([bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]], dtype=np.float32),
                 'compact_category_id': self.cat_mapping[int(ann['category_id'])],
