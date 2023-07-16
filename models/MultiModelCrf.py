@@ -152,7 +152,7 @@ import matplotlib.gridspec as gridspec
 
 import matplotlib.gridspec as gridspec
 
-def visualize_and_save_all(feature_map, seg_original, seg_rgb, seg_depth, depth_map, base_file_name):
+def visualize_and_save_all(feature_map, seg_original, seg_rgb, seg_depth, depth_map, seg_gt, base_file_name):
 
     # get colormap
     ncolors = 256
@@ -173,6 +173,7 @@ def visualize_and_save_all(feature_map, seg_original, seg_rgb, seg_depth, depth_
     seg_rgb = seg_rgb.cpu()
     seg_depth = seg_depth.cpu()
     depth_map = depth_map.cpu()
+    seg_gt = seg_gt.cpu() 
 
     for i in range(feature_map.shape[0]):
         fig = plt.figure(figsize=(10,10))
@@ -223,6 +224,19 @@ def visualize_and_save_all(feature_map, seg_original, seg_rgb, seg_depth, depth_
         ax = fig.add_subplot(gs[1, 2])
         ax.imshow(depth_map_np, interpolation='nearest')
         ax.text(0.05, 0.95, 'Depth', ha='left', va='top', transform=ax.transAxes, color='white')
+        ax.axis('off')
+
+        # Ground Truth
+        single_seg_gt = seg_gt[i,:,:]
+        min_val = torch.min(single_seg_gt)
+        single_seg_gt -= min_val
+        max_val = torch.max(single_seg_gt)
+        single_seg_gt /= max_val
+        seg_gt_np = single_seg_gt.numpy()
+
+        ax = fig.add_subplot(gs[1, 1])  # Change here to add one more plot for ground truth
+        ax.imshow(seg_gt_np, interpolation='nearest', cmap='rainbow_alpha')
+        ax.text(0.05, 0.95, 'GT', ha='left', va='top', transform=ax.transAxes, color='white')
         ax.axis('off')
 
         plt.subplots_adjust(wspace=0.01, hspace=0.01) # reduce spacing

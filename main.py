@@ -95,7 +95,7 @@ def parse_args():
     parser.add_argument('--crf_zeta', default=0.1, type=float)
     parser.add_argument('--crf_omega', default=2, type=float)
     parser.add_argument('--crf_kernel_size', default=3, type=float)
-    parser.add_argument('--crf_num_iter', default=100, type=int)
+    parser.add_argument('--crf_num_iter', default=1000, type=int)
     parser.add_argument('--loss_crf_step', default=4000, type=int)
     parser.add_argument('--loss_mil_step', default=1000, type=int)
     parser.add_argument('--crf_size_ratio', default=1, type=int)

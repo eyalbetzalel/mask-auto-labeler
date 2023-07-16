@@ -46,7 +46,7 @@ from utils.optimizers.adamw import AdamWwStep
 from models.MultiModelCrf import visualize_and_save_feature_map, visualize_and_save_depth_map, visualize_and_save_batch, visualize_and_save_all
 from models.prismer.experts.generate_depth import model as model_depth
 model_depth0 = model_depth.cuda(0)
-model_depth1 = model_depth.cuda(1)
+# model_depth1 = model_depth.cuda(1)
 
 class MeanField(nn.Module):
 
@@ -86,9 +86,36 @@ class MeanField(nn.Module):
 
         return depth_sim_map
 
+    def normalize(source, target):
+        '''
+        normlize target vector with minmax values of source vector.
+        ''' 
+        return (target - target.min()) * (source.max() - source.min()) / (target.max() - target.min()) + source.min()
+
+    def calculate_iou(self, targets, seg):
+        # Convert tensors to numpy arrays
+        targets = targets.cpu().numpy()
+        seg = seg.cpu().numpy()
+
+        # Calculate IoU score for each image in the batch
+        batch_size = targets.shape[0]
+        iou_scores = []
+        for i in range(batch_size):
+            target = targets[i]
+            prediction = seg[i]
+
+            intersection = np.logical_and(target, prediction)
+            union = np.logical_or(target, prediction)
+            iou_score = np.sum(intersection) / np.sum(union)
+            iou_scores.append(iou_score)
+
+        # Convert list to tensor
+        iou_scores = torch.tensor(iou_scores)
+
+        return iou_scores
 
     @torch.no_grad()
-    def forward(self, feature_map, seg, targets=None):
+    def forward(self, feature_map, seg, depth_map, targets=None):
         
         #################################################################################################################
         orig_image = feature_map.float()
@@ -109,23 +136,15 @@ class MeanField(nn.Module):
         # B, kernel_size**2, H*W
         kernel = torch.exp(-(((unfold_feature_map - feature_map.reshape(B, C, 1, H*W)) ** 2) / (2 * self.zeta ** 2)).sum(1))
         
-        # Estimate depth
-        feature_map_depth = self.depth_transform(feature_map)
-
-        if feature_map_depth.device.index:
-            depth_map = model_depth1(feature_map_depth)
-        else:
-            depth_map = model_depth0(feature_map_depth)
         
-        # depth_map = model_depth(feature_map_depth)
-        visualize_and_save_depth_map(depth_map, 'depth_map.png')
+        # visualize_and_save_depth_map(depth_map, 'depth_map.png')
 
         # Calculate depth similarity
         depth_sim_map = self.depth_similarity(depth_map)
 
         # TODO 3: Incorporate depth similarity into the kernel 
         kernel_wdepth = kernel * depth_sim_map
-
+        # kernel_wdepth = depth_sim_map
     
         if targets is not None:
             t = targets.reshape(B, H, W)
@@ -154,7 +173,25 @@ class MeanField(nn.Module):
         #visualize_and_save_batch(orig_image, orig_mask, "orig", text="Original Segmentation", plot_orig=True)
         # visualize_and_save_batch(orig_image, rgb_mask, "rgb", text="RGB CRF Segmentation", plot_orig=False)
         #visualize_and_save_batch(orig_image, mask_rgb_depth, "depth", text="Depth CRF Segmentation", plot_orig=False)
-        visualize_and_save_all(feature_map, seg_original=orig_mask, seg_rgb=rgb_mask, seg_depth=mask_rgb_depth,depth_map=depth_map, base_file_name="grid")
+        rgb_iou = self.calculate_iou(targets, rgb_mask)
+        depth_iou = self.calculate_iou(targets, mask_rgb_depth)
+        if torch.any(rgb_iou < 0.2):
+            visualize_and_save_all(feature_map[rgb_iou < 0.2,:,:,:], 
+                                   seg_original=orig_mask[rgb_iou < 0.2,:,:], 
+                                   seg_rgb=rgb_mask[rgb_iou < 0.2,:,:], 
+                                   seg_depth=mask_rgb_depth[rgb_iou < 0.2,:,:],
+                                   depth_map=depth_map[rgb_iou < 0.2,:,:],
+                                   seg_gt = targets[rgb_iou < 0.2,:,:],
+                                   base_file_name="bad_mask")
+            
+        if torch.any((depth_iou - rgb_iou) > 0.02):
+            visualize_and_save_all(feature_map[(depth_iou - rgb_iou) > 0.02,:,:,:], 
+                                   seg_original=orig_mask[(depth_iou - rgb_iou) > 0.02,:,:], 
+                                   seg_rgb=rgb_mask[(depth_iou - rgb_iou) > 0.02,:,:], 
+                                   seg_depth=mask_rgb_depth[(depth_iou - rgb_iou) > 0.02,:,:],
+                                   depth_map=depth_map[(depth_iou - rgb_iou) > 0.02,:,:],
+                                   seg_gt = targets[(depth_iou - rgb_iou) > 0.02,:,:], 
+                                   base_file_name="better_depth")
 
         return (seg_after_rgb > 0.5).float()
 
@@ -431,8 +468,8 @@ class MAL(pl.LightningModule):
         optimizer = torch.optim.SGD(self.parameters(), lr=self._lr, momentum=0.9)
         return optimizer 
 
-    def crf_loss(self, img, seg, tseg, boxmask):
-        refined_mask = self.mean_field(img, tseg, targets=boxmask) 
+    def crf_loss(self, img, seg, tseg, boxmask, depth):
+        refined_mask = self.mean_field(img, tseg, depth, targets=boxmask) 
         return self.dice_loss(seg, refined_mask).mean(), refined_mask
 
     def dice_loss(self, input, target):
@@ -507,7 +544,10 @@ class MAL(pl.LightningModule):
             scaled_tea_seg = F.interpolate(teacher_seg_sigmoid[None, ...], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
             # resize mask
             scaled_mask = F.interpolate(x['mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
-            loss_crf, pseudo_label = self.crf_loss(scaled_img, scaled_stu_seg, (scaled_stu_seg + scaled_tea_seg)/2, scaled_mask)
+            # resize depth 
+            scaled_depth = F.interpolate(x['depth'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+
+            loss_crf, pseudo_label = self.crf_loss(scaled_img, scaled_stu_seg, (scaled_stu_seg + scaled_tea_seg)/2, scaled_mask, scaled_depth)
             if self.current_epoch > 0:
                 step_crf_loss_weight = 1
             else:
