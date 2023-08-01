@@ -47,6 +47,7 @@ from models.MultiModelCrf import visualize_and_save_feature_map, visualize_and_s
 from models.prismer.experts.generate_depth import model as model_depth
 model_depth0 = model_depth.cuda(0)
 # model_depth1 = model_depth.cuda(1)
+iou_arr = []
 
 class MeanField(nn.Module):
 
@@ -146,12 +147,12 @@ class MeanField(nn.Module):
         kernel_wdepth = kernel * depth_sim_map
         # kernel_wdepth = depth_sim_map
     
-        if targets is not None:
-            t = targets.reshape(B, H, W)
-            seg = seg * t
-        else:
-            t = None
-        
+        # if targets is not None:
+        #     t = targets.reshape(B, H, W)
+        #     seg = seg * t
+        # else:
+        #     t = None
+        t = None
         seg = self.trunc(seg)
 
         for it in range(self.num_iter):
@@ -175,23 +176,25 @@ class MeanField(nn.Module):
         #visualize_and_save_batch(orig_image, mask_rgb_depth, "depth", text="Depth CRF Segmentation", plot_orig=False)
         rgb_iou = self.calculate_iou(targets, rgb_mask)
         depth_iou = self.calculate_iou(targets, mask_rgb_depth)
-        if torch.any(rgb_iou < 0.2):
-            visualize_and_save_all(feature_map[rgb_iou < 0.2,:,:,:], 
-                                   seg_original=orig_mask[rgb_iou < 0.2,:,:], 
-                                   seg_rgb=rgb_mask[rgb_iou < 0.2,:,:], 
-                                   seg_depth=mask_rgb_depth[rgb_iou < 0.2,:,:],
-                                   depth_map=depth_map[rgb_iou < 0.2,:,:],
-                                   seg_gt = targets[rgb_iou < 0.2,:,:],
-                                   base_file_name="bad_mask")
+        iou_arr.append(rgb_iou)
+        if torch.any(rgb_iou < 0.4):
+            if torch.any(rgb_iou[rgb_iou < 0.4] > 0.01):
+                visualize_and_save_all(feature_map[rgb_iou < 0.4,:,:,:], 
+                                    seg_original=orig_mask[rgb_iou < 0.4,:,:], 
+                                    seg_rgb=rgb_mask[rgb_iou < 0.4,:,:], 
+                                    seg_depth=mask_rgb_depth[rgb_iou < 0.4,:,:],
+                                    depth_map=depth_map[rgb_iou < 0.4,:,:],
+                                    seg_gt = targets[rgb_iou < 0.4,:,:],
+                                    base_file_name="bad_mask")
             
-        if torch.any((depth_iou - rgb_iou) > 0.02):
-            visualize_and_save_all(feature_map[(depth_iou - rgb_iou) > 0.02,:,:,:], 
-                                   seg_original=orig_mask[(depth_iou - rgb_iou) > 0.02,:,:], 
-                                   seg_rgb=rgb_mask[(depth_iou - rgb_iou) > 0.02,:,:], 
-                                   seg_depth=mask_rgb_depth[(depth_iou - rgb_iou) > 0.02,:,:],
-                                   depth_map=depth_map[(depth_iou - rgb_iou) > 0.02,:,:],
-                                   seg_gt = targets[(depth_iou - rgb_iou) > 0.02,:,:], 
-                                   base_file_name="better_depth")
+        # if torch.any((depth_iou - rgb_iou) > 0.02):
+        #     visualize_and_save_all(feature_map[(depth_iou - rgb_iou) > 0.02,:,:,:], 
+        #                            seg_original=orig_mask[(depth_iou - rgb_iou) > 0.02,:,:], 
+        #                            seg_rgb=rgb_mask[(depth_iou - rgb_iou) > 0.02,:,:], 
+        #                            seg_depth=mask_rgb_depth[(depth_iou - rgb_iou) > 0.02,:,:],
+        #                            depth_map=depth_map[(depth_iou - rgb_iou) > 0.02,:,:],
+        #                            seg_gt = targets[(depth_iou - rgb_iou) > 0.02,:,:], 
+        #                            base_file_name="better_depth")
 
         return (seg_after_rgb > 0.5).float()
 
@@ -542,12 +545,17 @@ class MAL(pl.LightningModule):
             scaled_stu_seg = F.interpolate(student_seg_sigmoid[None, ...], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
             # resize teacher segmentation
             scaled_tea_seg = F.interpolate(teacher_seg_sigmoid[None, ...], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            
             # resize mask
-            scaled_mask = F.interpolate(x['mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            # scaled_mask = F.interpolate(x['mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            
             # resize depth 
             scaled_depth = F.interpolate(x['depth'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
-
-            loss_crf, pseudo_label = self.crf_loss(scaled_img, scaled_stu_seg, (scaled_stu_seg + scaled_tea_seg)/2, scaled_mask, scaled_depth)
+            
+            # resize gt_mask
+            scaled_gt_mask = F.interpolate(x['gt_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            
+            loss_crf, pseudo_label = self.crf_loss(scaled_img, scaled_stu_seg, (scaled_stu_seg + scaled_tea_seg)/2, scaled_gt_mask, scaled_depth)
             if self.current_epoch > 0:
                 step_crf_loss_weight = 1
             else:

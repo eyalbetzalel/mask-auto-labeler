@@ -217,18 +217,28 @@ class RandomCropV3(RandomCropV2):
             data['image'] = ret_img
 
             # crop depth
-            depth = np.array(data['depth'].permute(1, 2, 0))
-            ret_depth = custom_crop_image(depth, extbox)
+            depth = np.array(data['depth'].permute(1, 2, 0)) # (1024, 2048, 1)
+            ret_depth = custom_crop_image(depth, extbox) # (216, 135, 1)
             
             # resize depth
             ret_depth = torch.from_numpy(ret_depth)
-            ret_depth = ret_depth.unsqueeze(0).permute(0,3,1,2)
-            ret_depth = F.interpolate(ret_depth, size=(self._max_size, self._max_size), mode='bilinear', align_corners=False)
-            ret_depth = ret_depth.squeeze().unsqueeze(0)
+            ret_depth = ret_depth.unsqueeze(0).permute(0,3,1,2) # torch.Size([1, 1, 216, 135])
+            ret_depth = F.interpolate(ret_depth, size=(self._max_size, self._max_size), mode='bilinear', align_corners=False) # torch.Size([1, 1, 512, 512])
+            ret_depth = ret_depth.squeeze().unsqueeze(0) # torch.Size([1, 512, 512])
             # ret_depth = ret_depth.unsqueeze(0).numpy()
             data['depth'] = ret_depth
 
-
+            # crop gt mask
+            gt_mask = np.array(data['gt_mask'][:, :, None]) # (1024, 2048, 1)
+            ret_gt_mask = custom_crop_image(gt_mask, extbox) # (216, 135, 1)
+            
+            # resize depth
+            ret_gt_mask = torch.from_numpy(ret_gt_mask)
+            ret_gt_mask = ret_gt_mask.unsqueeze(0).permute(0,3,1,2)
+            ret_gt_mask = F.interpolate(ret_gt_mask, size=(self._max_size, self._max_size), mode='bilinear', align_corners=False)
+            ret_gt_mask = ret_gt_mask.squeeze().unsqueeze(0)
+            # ret_depth = ret_depth.unsqueeze(0).numpy()
+            data['gt_mask'] = ret_gt_mask
 
 
         # crop mask
@@ -420,6 +430,7 @@ class RandomFlip:
                 x['image'] = ImageOps.mirror(x['image'])
                 x['mask'] = x['mask'][:,::-1]
                 x['depth'] = torch.flip(x['depth'], [2])
+                x['gt_mask'] = torch.flip(x['gt_mask'], [2])
             else:
                 x['flip_records'] = 0
         else:

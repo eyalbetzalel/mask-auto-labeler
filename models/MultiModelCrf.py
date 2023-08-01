@@ -235,6 +235,7 @@ def visualize_and_save_all(feature_map, seg_original, seg_rgb, seg_depth, depth_
         seg_gt_np = single_seg_gt.numpy()
 
         ax = fig.add_subplot(gs[1, 1])  # Change here to add one more plot for ground truth
+        ax.imshow(feature_map_np, interpolation='nearest')
         ax.imshow(seg_gt_np, interpolation='nearest', cmap='rainbow_alpha')
         ax.text(0.05, 0.95, 'GT', ha='left', va='top', transform=ax.transAxes, color='white')
         ax.axis('off')

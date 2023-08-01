@@ -88,13 +88,18 @@ class BoxLabelVOC(Dataset):
 
         # Create a 3-channel version of the mask
         mask_3ch = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+        # Create a 3-channel version of the mask with color blue
+        #mask_3ch = np.zeros_like(img)
+        #mask_3ch[bbox[1]:bbox[3], bbox[0]:bbox[2], 0] = mask[bbox[1]:bbox[3], bbox[0]:bbox[2]]  # Blue channel
 
         # Overlay the mask onto the image
         combined_img = cv2.addWeighted(img, 0.7, mask_3ch, 0.3, 0)
 
         # Draw the bounding box on the combined image
         # Bounding box format is [xmin, ymin, xmax, ymax]
-        # cv2.rectangle(combined_img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 2)
+        x0, y0, x1, y1 = int(bbox[0]), int(bbox[1]), int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])
+        
+        cv2.rectangle(combined_img, (x0, y0), (x1, y1), (0, 255, 0), 2)
 
         # Save the combined image
         cv2.imwrite(output_path, combined_img)
@@ -106,18 +111,9 @@ class BoxLabelVOC(Dataset):
         mask_path = os.path.join("data/cityscapes/", mask_path)
         # Load the mask for specific instance_id:
         mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)  # Load with original depth
-        if bbox[3] > bbox[1]:
-            temp = bbox[3]
-            bbox[3] = bbox[1]
-            bbox[1] = temp
-        if bbox[2] > bbox[0]:
-            temp = bbox[2]
-            bbox[2] = bbox[0]
-            bbox[0] = temp
-
-        bbox_mask = mask[bbox[3]:bbox[1], bbox[2]:bbox[0]]
+        x0, y0, x1, y1 = int(bbox[0]), int(bbox[1]), int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])
+        bbox_mask = mask[y0:y1+1, x0:x1+1]
         unique_ids, counts = np.unique(bbox_mask, return_counts=True)
-        
         max_count_id = unique_ids[np.argmax(counts)]
         binary_mask = np.where(mask == max_count_id, 1, 0)
         self.save_mask_and_bbox(img_path=img_path, mask=binary_mask, bbox=bbox, output_path="./test_mask.png")
@@ -147,10 +143,14 @@ class BoxLabelVOC(Dataset):
 
         # box mask
         bbox = ann['bbox']
-        target = self.get_cs_mask(img_path=file_name, bbox=bbox)
         mask = np.zeros((h, w))
         x0, y0, x1, y1 = int(bbox[0]), int(bbox[1]), int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])
         mask[y0:y1+1, x0:x1+1] = 1
+        
+        ############################################################################################
+        # Get GT Mask: 
+
+        gt_mask = self.get_cs_mask(img_path=file_name, bbox=bbox)
 
         ############################################################################################
         # Get depth: 
@@ -163,7 +163,7 @@ class BoxLabelVOC(Dataset):
         data = {'image': img, 'mask': mask, 'height': h, 'width': w, 
                 'category_id': ann['category_id'], 'bbox': np.array([bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]], dtype=np.float32),
                 'compact_category_id': self.cat_mapping[int(ann['category_id'])],
-                'id': ann['id'], 'depth': depth_map}
+                'id': ann['id'], 'depth': depth_map, 'gt_mask': gt_mask}
 
         if self.transform is not None:
             data = self.transform(data)
