@@ -104,20 +104,45 @@ class BoxLabelVOC(Dataset):
         # Save the combined image
         cv2.imwrite(output_path, combined_img)
 
-    def get_cs_mask(self, img_path, bbox):
-        # Replace parts of the path to get the path to the ground truth
-        mask_path = img_path.replace("leftImg8bit", "gtFine")
-        mask_path = os.path.splitext(mask_path)[0] + "_instanceIds.png"
-        mask_path = os.path.join("data/cityscapes/", mask_path)
-        # Load the mask for specific instance_id:
-        mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)  # Load with original depth
-        x0, y0, x1, y1 = int(bbox[0]), int(bbox[1]), int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])
-        bbox_mask = mask[y0:y1+1, x0:x1+1]
-        unique_ids, counts = np.unique(bbox_mask, return_counts=True)
-        max_count_id = unique_ids[np.argmax(counts)]
-        binary_mask = np.where(mask == max_count_id, 1, 0)
-        self.save_mask_and_bbox(img_path=img_path, mask=binary_mask, bbox=bbox, output_path="./test_mask.png")
-        return binary_mask
+    # def get_cs_mask(self, img_path, bbox):
+    #     # # Replace parts of the path to get the path to the ground truth
+    #     # mask_path = img_path.replace("leftImg8bit", "gtFine")
+    #     # mask_path = os.path.splitext(mask_path)[0] + "_instanceIds.png"
+    #     # mask_path = os.path.join("data/cityscapes/", mask_path)
+    #     # # Load the mask for specific instance_id:
+    #     # mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)  # Load with original depth
+    #     # x0, y0, x1, y1 = int(bbox[0]), int(bbox[1]), int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])
+    #     # bbox_mask = mask[y0:y1+1, x0:x1+1]
+    #     # unique_ids, counts = np.unique(bbox_mask, return_counts=True)
+    #     # max_count_id = unique_ids[np.argmax(counts)]
+    #     # binary_mask = np.where(mask == max_count_id, 1, 0)
+    #     # self.save_mask_and_bbox(img_path=img_path, mask=binary_mask, bbox=bbox, output_path="./test_mask.png")
+    #     # return binary_mask
+
+    #     mask_path = img_path.replace("leftImg8bit", "gtFine")
+    #     mask_path = os.path.splitext(mask_path)[0] + "_instanceIds.png"
+    #     mask_path = os.path.join("data/cityscapes/", mask_path)
+    #     # Load the mask for specific instance_id:
+    #     mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)  # Load with original depth
+    #     x0, y0, x1, y1 = int(bbox[0]), int(bbox[1]), int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])
+    #     bbox_mask = mask[y0:y1+1, x0:x1+1]
+    #     unique_ids = np.unique(bbox_mask)
+    #     min_l2_dist = float('inf')
+    #     chosen_id = None
+    #     for uid in unique_ids:
+    #         y, x = np.where(bbox_mask == uid)
+    #         if len(x) == 0 or len(y) == 0:
+    #             continue
+    #         instance_bbox = [np.min(x), np.min(y), np.max(x) - np.min(x), np.max(y) - np.min(y)]
+    #         instance_bbox = [bbox[0] + instance_bbox[0], bbox[1] + instance_bbox[1], instance_bbox[2], instance_bbox[3]]
+    #         l2_dist = np.sqrt(np.sum((np.array(instance_bbox) - np.array(bbox))**2))
+    #         if l2_dist < min_l2_dist:
+    #             min_l2_dist = l2_dist
+    #             chosen_id = uid
+    #     binary_mask = np.where(mask == chosen_id, 1, 0)
+    #     self.save_mask_and_bbox(img_path=img_path, mask=binary_mask, bbox=bbox, output_path="./test_mask.png")
+    #     return binary_mask
+
 
 
     def get_category_mapping(self):
@@ -150,7 +175,7 @@ class BoxLabelVOC(Dataset):
         ############################################################################################
         # Get GT Mask: 
 
-        gt_mask = self.get_cs_mask(img_path=file_name, bbox=bbox)
+        gt_mask = self.coco.annToMask(ann)
 
         ############################################################################################
         # Get depth: 

@@ -177,15 +177,15 @@ class MeanField(nn.Module):
         rgb_iou = self.calculate_iou(targets, rgb_mask)
         depth_iou = self.calculate_iou(targets, mask_rgb_depth)
         iou_arr.append(rgb_iou)
-        if torch.any(rgb_iou < 0.4):
-            if torch.any(rgb_iou[rgb_iou < 0.4] > 0.01):
-                visualize_and_save_all(feature_map[rgb_iou < 0.4,:,:,:], 
-                                    seg_original=orig_mask[rgb_iou < 0.4,:,:], 
-                                    seg_rgb=rgb_mask[rgb_iou < 0.4,:,:], 
-                                    seg_depth=mask_rgb_depth[rgb_iou < 0.4,:,:],
-                                    depth_map=depth_map[rgb_iou < 0.4,:,:],
-                                    seg_gt = targets[rgb_iou < 0.4,:,:],
-                                    base_file_name="bad_mask")
+        if torch.any(rgb_iou < 0.8):
+            if torch.any(rgb_iou[rgb_iou < 0.8] > 0.7):
+                visualize_and_save_all(feature_map[rgb_iou < 0.8,:,:,:], 
+                                    seg_original=orig_mask[rgb_iou < 0.8,:,:], 
+                                    seg_rgb=rgb_mask[rgb_iou < 0.8,:,:], 
+                                    seg_depth=mask_rgb_depth[rgb_iou < 0.8,:,:],
+                                    depth_map=depth_map[rgb_iou < 0.8,:,:],
+                                    seg_gt = targets[rgb_iou < 0.8,:,:],
+                                    base_file_name="Med_IoU")
             
         # if torch.any((depth_iou - rgb_iou) > 0.02):
         #     visualize_and_save_all(feature_map[(depth_iou - rgb_iou) > 0.02,:,:,:], 
