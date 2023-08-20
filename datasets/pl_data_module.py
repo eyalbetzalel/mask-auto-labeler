@@ -9,7 +9,7 @@ import os
 
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
-from .voc import BoxLabelVOC, BoxLabelVOCLMDB, InstSegVOC, InstSegVOCLMDB, InstSegVOCwithBoxInput
+from .voc import BoxLabelVOC, BoxLabelVOCLMDB, InstSegVOC, InstSegVOCLMDB, InstSegVOCwithBoxInput, MaskDinoLabels
 from .coco import BoxLabelCOCO, InstSegCOCO, BoxLabelCOCOLMDB, InstSegCOCOLMDB, InstSegCOCOwithBoxInput
 from .objects365 import InstSegObjects365LMDB, BoxLabelObjects365LMDB, BoxLabelObjects365COCOScheduleLMDB
 from .data_aug import data_aug_pipelines, custom_collate_fn
@@ -61,6 +61,7 @@ def save_image_with_mask_and_bbox(image_tensor, bbox, output_file):
     plt.close(fig)
 
 num_class_dict = {
+    'maskdino': 81,
     'coco': 81,
     'coco_original': 81,
     'cocolmdb': 81,
@@ -74,6 +75,23 @@ num_class_dict = {
 
 
 datapath_configs = dict(
+    maskdino=dict(
+        training_config=dict(
+            train_img_data_dir='data/cityscapes/leftImg8bit/train', 
+            val_img_data_dir='data/cityscapes/leftImg8bit/val', 
+            test_img_data_dir='data/cityscapes/leftImg8bit/test',
+            dataset_type='coco',
+            train_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
+            val_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_val.json",
+        ),
+        generating_pseudo_label_config=dict(
+            train_img_data_dir='data/cityscapes/leftImg8bit/train', 
+            train_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
+            val_img_data_dir='data/cityscapes/leftImg8bit/train', 
+            dataset_type='coco',
+            val_ann_path="data/cityscapes/annotations/instancesonly_filtered_gtFine_train.json",
+        )
+    ),
     coco=dict(
         training_config=dict(
             train_img_data_dir='data/cityscapes/leftImg8bit/train', 
@@ -268,6 +286,8 @@ class WSISDataModule(pl.LightningDataModule):
                 build_dataset = BoxLabelYTVIS
             elif self.args.dataset_type == 'cityscapes':
                 build_dataset = BoxLabelCityscapes
+            elif self.args.dataset_type == 'maskdino':
+                build_dataset = MaskDinoLabels
             else:
                 raise NotImplementedError
             datapath_config = datapath_configs[self.args.dataset_type]
@@ -287,7 +307,7 @@ class WSISDataModule(pl.LightningDataModule):
                 transform = self.test_transform
                 if self.args.dataset_type == 'voc':
                     build_dataset = InstSegVOC
-                elif self.args.dataset_type in ['coco', 'coco_original', 'astro']:
+                elif self.args.dataset_type in ['coco', 'coco_original', 'astro', 'maskdino']:
                     build_dataset = InstSegCOCO
                 elif self.args.dataset_type == 'cocolmdb':
                     build_dataset = InstSegCOCOLMDB

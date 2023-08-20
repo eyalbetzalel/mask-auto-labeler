@@ -171,12 +171,14 @@ class MeanField(nn.Module):
 
         seg_after_rgb_depth = seg
         mask_rgb_depth = (seg_after_rgb_depth > 0.5).float()
-        #visualize_and_save_batch(orig_image, orig_mask, "orig", text="Original Segmentation", plot_orig=True)
-        # visualize_and_save_batch(orig_image, rgb_mask, "rgb", text="RGB CRF Segmentation", plot_orig=False)
-        #visualize_and_save_batch(orig_image, mask_rgb_depth, "depth", text="Depth CRF Segmentation", plot_orig=False)
+        
+        ############################################################################################################
+        # IoU Calculation : 
+
         rgb_iou = self.calculate_iou(targets, rgb_mask)
         depth_iou = self.calculate_iou(targets, mask_rgb_depth)
         iou_arr.append(rgb_iou)
+        print(len(iou_arr))
         if torch.any(rgb_iou < 0.8):
             if torch.any(rgb_iou[rgb_iou < 0.8] > 0.7):
                 visualize_and_save_all(feature_map[rgb_iou < 0.8,:,:,:], 
@@ -186,15 +188,8 @@ class MeanField(nn.Module):
                                     depth_map=depth_map[rgb_iou < 0.8,:,:],
                                     seg_gt = targets[rgb_iou < 0.8,:,:],
                                     base_file_name="Med_IoU")
-            
-        # if torch.any((depth_iou - rgb_iou) > 0.02):
-        #     visualize_and_save_all(feature_map[(depth_iou - rgb_iou) > 0.02,:,:,:], 
-        #                            seg_original=orig_mask[(depth_iou - rgb_iou) > 0.02,:,:], 
-        #                            seg_rgb=rgb_mask[(depth_iou - rgb_iou) > 0.02,:,:], 
-        #                            seg_depth=mask_rgb_depth[(depth_iou - rgb_iou) > 0.02,:,:],
-        #                            depth_map=depth_map[(depth_iou - rgb_iou) > 0.02,:,:],
-        #                            seg_gt = targets[(depth_iou - rgb_iou) > 0.02,:,:], 
-        #                            base_file_name="better_depth")
+        
+        ############################################################################################################
 
         return (seg_after_rgb > 0.5).float()
 

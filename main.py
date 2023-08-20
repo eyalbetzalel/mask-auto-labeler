@@ -33,7 +33,7 @@ def parse_args():
     # Dataset
     parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('--num_workers_per_gpu', default=2, type=int)
-    parser.add_argument('--dataset_type', default='coco', type=str, choices=datapath_configs.keys())
+    parser.add_argument('--dataset_type', default='maskdino', type=str, choices=datapath_configs.keys())
 
     # Hyperparameter
     parser.add_argument('--batch_size', default=8, type=int)

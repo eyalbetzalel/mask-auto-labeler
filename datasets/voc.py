@@ -23,7 +23,9 @@ import json
 import cv2
 import pickle
 
-import time
+from pycocotools import mask as mask_f
+from detectron2.structures import Boxes, Instances
+import detectron2
 
 from models.prismer.experts.generate_depth import model as model_depth
 import torchvision.transforms as transforms
@@ -64,7 +66,193 @@ class DataWrapper:
         self.data = data
 
 
+class MaskDinoLabels(Dataset):
+
+    def __init__(self, ann_path, img_data_dir, min_obj_size=0, max_obj_size=1e10, transform=None, args=None):
+        self.args = args
+        self.ann_path = ann_path
+        self.img_data_dir = img_data_dir
+        self.min_obj_size = min_obj_size
+        self.max_obj_size = max_obj_size
+        self.transform = transform
+        self.coco = COCO(ann_path)
+        self._filter_imgs()
+        self.get_category_mapping()
+
+        ###################################################################################
+        self.maskdino_annotations, self.maskdino_len = self._load_annotations_from_json_folder()
+
+        # Create JSON 
     
+    def _load_annotations_from_json_folder(self):
+        """
+        Load annotations from JSON files in the given folder.
+
+        Parameters:
+        - folder_path (str): Path to the folder containing JSON files.
+
+        Returns:
+        - list[dict]: List of dictionaries containing annotations.
+        """
+
+        folder_path = '/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels'
+        
+        # List to store all annotations
+        annotations = []
+        
+        # Running index for annotations across all JSON files
+        annotation_id = 0
+
+        # Traverse through all JSON files in the folder
+        for dirpath, dirnames, filenames in os.walk(folder_path):
+            for filename in filenames:
+                if filename.endswith(".json"):
+                    with open(os.path.join(dirpath, filename), 'r') as f:
+                        data = json.load(f)
+                        
+                        # Assuming each JSON file has a key 'annotations' that contains all the annotations
+                        for i in range(len(data['pred_classes'])):
+                            annotation_dict = {
+                                'segmentation': data['segmentation'][i],
+                                'pred_box': data['pred_boxes'][i],
+                                'pred_class': data['pred_classes'][i],
+                                'score': data['scores'][i],
+                                'json_path': os.path.join(dirpath, filename),
+                                'id': annotation_id
+                            }
+                            annotations.append(annotation_dict)
+                            annotation_id += 1
+        dataset_len = annotation_id                
+        return annotations, dataset_len
+    
+    def _get_annotation_by_id(self, annotation_id, all_annotations):
+        """
+        Get an annotation by its ID from the aggregated annotations list.
+
+        Parameters:
+        - json_path (str): The path of the JSON file.
+        - annotation_id (int): The ID of the desired annotation.
+        - all_annotations (list[dict]): Aggregated list of all annotations.
+
+        Returns:
+        - dict: The annotation corresponding to the given ID or None if not found.
+        """
+        for annotation in all_annotations:
+            if annotation['id'] == annotation_id:
+                return annotation
+        return None
+
+    def save_mask_and_bbox(self, img_path, mask, bbox, output_path):
+        # Load the image and mask
+        img = self.get_image(img_path)
+        img = np.array(img)[:, :, ::-1]
+        mask = mask.astype(np.uint8)
+        mask[mask == 1] = 255
+
+        # Create a 3-channel version of the mask
+        mask_3ch = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+        # Create a 3-channel version of the mask with color blue
+        #mask_3ch = np.zeros_like(img)
+        #mask_3ch[bbox[1]:bbox[3], bbox[0]:bbox[2], 0] = mask[bbox[1]:bbox[3], bbox[0]:bbox[2]]  # Blue channel
+
+        # Overlay the mask onto the image
+        combined_img = cv2.addWeighted(img, 0.7, mask_3ch, 0.3, 0)
+
+        # Draw the bounding box on the combined image
+        # Bounding box format is [xmin, ymin, xmax, ymax]
+        x0, y0, x1, y1 = int(bbox[0]), int(bbox[1]), int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3])
+        
+        cv2.rectangle(combined_img, (x0, y0), (x1, y1), (0, 255, 0), 2)
+
+        # Save the combined image
+        cv2.imwrite(output_path, combined_img)
+
+    def get_category_mapping(self):
+        self.cat_mapping = dict([i,i] for i in range(1, 21))
+
+    def _filter_imgs(self):
+        anns = self.coco.dataset['annotations']
+        filtered_anns = []
+        for ann in anns:
+            if ann['bbox'][2] * ann['bbox'][3] > self.min_obj_size and ann['bbox'][2] * ann['bbox'][3] < self.max_obj_size and\
+                ann['bbox'][2] > 2 and ann['bbox'][3] > 2:
+                filtered_anns.append(ann)
+        self.coco.dataset['annotations'] = filtered_anns
+
+
+    def __len__(self):
+        return self.maskdino_len
+    
+    def __getitem__(self, idx):
+        # ann = self.coco.dataset['annotations'][idx]
+        # img_info = self.coco.loadImgs(ann['image_id'])[0]
+        # h, w, file_name = img_info['height'], img_info['width'], img_info['file_name']
+        
+        ############################################################
+        # 1. Create a path for the JSON file
+        
+        ann_maskdino = self._get_annotation_by_id(idx, self.maskdino_annotations)
+
+        # json_path = f'/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels/{file_name}'.replace('.png', '.json')
+        
+        
+        img_path = ann_maskdino["json_path"].replace("/maskdino_labels/", "/")
+        img_path = os.path.splitext(img_path)[0] + ".png"
+        # Prepare to recreate the Instances object
+        img = self.get_image(img_path)
+
+        # 4. Convert polygons to binary masks
+
+        h, w = (1024, 2048)
+
+        if len(ann_maskdino["segmentation"]) == 0:
+            dino_mask = np.zeros((h, w, 1))
+        else:
+            rle = mask_f.frPyObjects(ann_maskdino["segmentation"], h, w)
+            dino_mask = mask_f.decode(rle)
+        if len(dino_mask.shape) == 3 and dino_mask.shape[2] > 1:
+            # Merge channels using OR operation
+            dino_mask = np.any(dino_mask, axis=2).astype(np.uint8)
+        
+        dino_mask = dino_mask.squeeze()
+        
+        ############################################################
+        # box mask
+        bbox = np.round(ann_maskdino['pred_box']).astype(int)
+        mask = np.zeros((h, w))
+        x0, y0, x1, y1 = bbox[0], bbox[1], bbox[2], bbox[3]
+        mask[y0:y1+1, x0:x1+1] = 1
+        
+        ############################################################################################
+        # Get depth: 
+
+        depth_name = img_path.split("/")[-1].split(".")[0] + ".pt"
+        depth_name = os.path.join("/workspace/mask-auto-labeler/data/cityscapes/depth_maps", depth_name)
+        depth_map = torch.load(depth_name, map_location=torch.device('cpu'))
+        
+        ############################################################################################
+        data = {'image': img, 'mask': mask, 'height': h, 'width': w, 
+                'category_id': ann_maskdino['pred_class'], 'bbox': bbox.astype(float),
+                'id': ann_maskdino['id'], 'depth': depth_map, 'gt_mask': dino_mask}
+
+        if self.transform is not None:
+            data = self.transform(data)
+
+        for key, value in data.items():
+            if value is None:
+                # Place a breakpoint on the next line in VSCode
+                print(f"Value for key '{key}' is None at index {index}")
+
+        return data
+
+    def get_image(self, file_name):
+        try:
+            image = Image.open(file_name).convert('RGB')
+            #image = image.resize((640, 480))
+
+        except FileNotFoundError:
+            return None
+        return image    
 
 class BoxLabelVOC(Dataset):
 
