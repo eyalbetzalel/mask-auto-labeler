@@ -8,7 +8,7 @@ import argparse
 import os
 import importlib.util
 from models.mal import MAL, MALPseudoLabels
-
+from models.dapt import DAPT
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -26,8 +26,8 @@ def parse_args():
     # load config
     parser.add_argument("--val_only", action='store_true', default=False)
     parser.add_argument("--box_inputs", type=str, default=None)
-    parser.add_argument("--resume", type=str, default="/workspace/mask-auto-labeler/epoch=6-arch=vit-mae-base-16-not_adjust_scale=False-mask_scale_ratio_pre=1.ckpt", help='Weight name to be resumed')
-    # parser.add_argument("--resume", type=str, default=None, help='Weight name to be resumed')
+    #parser.add_argument("--resume", type=str, default="/workspace/mask-auto-labeler/epoch=6-arch=vit-mae-base-16-not_adjust_scale=False-mask_scale_ratio_pre=1.ckpt", help='Weight name to be resumed')
+    parser.add_argument("--resume", type=str, default=None, help='Weight name to be resumed')
     parser.add_argument('--val_interval', default=1, type=int)
 
     # Dataset
@@ -185,7 +185,8 @@ if __name__ == '__main__':
         if args.box_inputs is not None:
             model = MALPseudoLabels(args=args, num_iter_per_epoch=num_iter_per_epoch)
         else:
-            model = MAL(args=args, num_iter_per_epoch=num_iter_per_epoch)
+            # model = MAL(args=args, num_iter_per_epoch=num_iter_per_epoch)
+            model = DAPT(args=args, num_iter_per_epoch=num_iter_per_epoch)
 
         checkpoint_callback = ModelCheckpoint(
                                 dirpath=os.path.join("work_dirs", args.dataset_type),
