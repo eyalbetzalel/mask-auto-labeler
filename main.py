@@ -16,6 +16,7 @@ import torch.nn.functional as F
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import loggers as pl_loggers
+from pytorch_lightning.loggers import WandbLogger
 
 from datasets.pl_data_module import WSISDataModule, datapath_configs
 
@@ -113,10 +114,28 @@ def parse_args():
     # Generating mask pseudo-labels
     parser.add_argument('--label_dump_path', default=None, type=str)
 
+    # DAPT
+    parser.add_argument('--save_dapt_cp_every_x_epochs', default=1, type=int)
+    parser.add_argument("--dapt_cp_path", default="/workspace/mask-auto-labeler/dapt_weights.ckpt", type=str)
 
 
     return parser.parse_args()
 
+# start a new wandb run to track this script
+import wandb
+
+wandb.init(
+    # set the wandb project where this run will be logged
+    project="my-awesome-project",
+    
+    # track hyperparameters and run metadata
+    config={
+    "learning_rate": 0,
+    "architecture": "DAPT",
+    "dataset": "CityScapes",
+    "epochs": 0,
+    }
+)
 
 if __name__ == '__main__':
 
@@ -194,11 +213,11 @@ if __name__ == '__main__':
                                          '-arch={}'.format(args.arch.replace("/", "-")) +\
                                          '-not_adjust_scale={}-mask_scale_ratio_pre={}'.format(args.not_adjust_scale, args.mask_scale_ratio_pre),
                                         save_top_k=-1, every_n_epochs=args.save_every_k_epoch, save_last=True)
-
+        wandb_logger = WandbLogger(project="DAPT")
         trainer = Trainer(gpus=args.gpus, num_nodes=args.nnodes, strategy=args.strategy, devices=args.num_mp_devices,
                         callbacks=[checkpoint_callback], accelerator='gpu', max_epochs=args.max_epochs,
                         precision=16, check_val_every_n_epoch=args.val_interval, 
-                        logger=tb_logger, resume_from_checkpoint=args.resume,
+                        logger=wandb_logger, resume_from_checkpoint=args.resume,
                         accumulate_grad_batches=args.accum_grad_batches)
 
         if not args.val_only:

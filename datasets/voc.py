@@ -181,7 +181,7 @@ class MaskDinoLabels(Dataset):
 
 
     def __len__(self):
-        return self.maskdino_len
+        return 128 #self.maskdino_len
     
     def __getitem__(self, idx):
         # ann = self.coco.dataset['annotations'][idx]

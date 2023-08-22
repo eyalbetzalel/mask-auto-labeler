@@ -47,6 +47,12 @@ from utils.optimizers.adamw import AdamWwStep
 
 from models.MultiModelCrf import visualize_and_save_feature_map, visualize_and_save_depth_map, visualize_and_save_batch, visualize_and_save_all
 from models.prismer.experts.generate_depth import model as model_depth
+
+from torchvision.utils import make_grid
+import random
+import wandb
+import matplotlib.pyplot as plt
+
 model_depth0 = model_depth.cuda(0)
 # model_depth1 = model_depth.cuda(1)
 iou_arr = []
@@ -222,9 +228,6 @@ class DAPT(pl.LightningModule):
 
         # loss term hyper parameters
         self.num_convs = args.mask_head_num_convs
-        # self.loss_mil_weight = args.loss_mil_weight
-        # self.loss_crf_weight = args.loss_crf_weight
-        # self.loss_crf_step = args.loss_crf_step
         self.args = args
 
         self.mask_thres = args.mask_thres
@@ -272,15 +275,8 @@ class DAPT(pl.LightningModule):
         self.automatic_optimization = False
 
     def configure_optimizers(self):
-        # optimizer = AdamWwStep(self.parameters(), eps=self.args.optim_eps, 
-        #                         betas=self.args.optim_betas,
-        #                         lr=self._lr, weight_decay=self._wd)
         optimizer = torch.optim.SGD(self.parameters(), lr=self._lr, momentum=0.9)
         return optimizer 
-
-    # def crf_loss(self, img, seg, tseg, boxmask, depth):
-    #     refined_mask = self.mean_field(img, tseg, depth, targets=boxmask) 
-    #     return self.dice_loss(seg, refined_mask).mean(), refined_mask
 
     def dice_loss(self, input, target):
         input = input.contiguous().view(input.size()[0], -1).float()
@@ -292,25 +288,6 @@ class DAPT(pl.LightningModule):
         d = (2 * a) / (b + c)
 
         return 1-d
-        
-    # def mil_loss(self, pred, target):
-    #     row_labels = target.max(1)[0]
-    #     column_labels = target.max(2)[0]
-
-    #     row_input = pred.max(1)[0]
-    #     column_input = pred.max(2)[0]
-
-    #     loss_func = self.dice_loss
-
-    #     loss = loss_func(column_input, column_labels) +\
-    #            loss_func(row_input, row_labels)
-        
-    #     return loss
-
-    # def mask_loss(self, pred, target):
-    #     bce_loss = nn.BCEWithLogitsLoss()
-    #     return bce_loss(pred, target)
-
 
     def training_step(self, x):
         optimizer = self.optimizers()
@@ -327,7 +304,7 @@ class DAPT(pl.LightningModule):
         student_output = self.student(image, x['mask'], x['bbox'])
         # teacher_output = self.teacher(timage, x['mask'], x['bbox'])
         B, oh, ow = student_output['seg'].shape[0], student_output['seg'].shape[2], student_output['seg'].shape[3]
-        mask  = F.interpolate(x['mask'], size=(oh, ow), mode='bilinear', align_corners=False).reshape(-1, oh, ow)
+        gt_mask  = F.interpolate(x['gt_mask'], size=(oh, ow), mode='bilinear', align_corners=False).reshape(-1, oh, ow)
         
         args = self.args
 
@@ -335,17 +312,21 @@ class DAPT(pl.LightningModule):
         if 'image' in x:
             student_seg_sigmoid = torch.sigmoid(student_output['seg'])[:,0].float()
             #teacher_seg_sigmoid = torch.sigmoid(teacher_output['seg'])[:,0].float()
-            loss_dice = self.dice_loss(student_seg_sigmoid, mask)
+            loss_dice = self.dice_loss(student_seg_sigmoid, gt_mask)
             loss_dice = loss_dice.sum() / (loss_dice.numel() + 1e-4)
             loss.update({'dice': loss_dice})
-            self.log("train/loss_dice", loss_dice, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
+            #self.log("train/loss_dice", loss_dice, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
         else:
             raise NotImplementedError
 
         total_loss = sum(loss.values())
-        self.log("train/loss", total_loss, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
-        self.log("lr", optimizer.param_groups[0]['lr'], on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
-        self.log("train/bs", image.shape[0], on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
+            # Log using wandb
+        wandb.log({
+            "train/loss": total_loss,
+            "lr": optimizer.param_groups[0]['lr'],
+            "train/bs": image.shape[0],
+            "epoch" : self.current_epoch
+        })
         optimizer.zero_grad()
         self.manual_backward(total_loss)
         for name, param in self.student.named_parameters():
@@ -353,6 +334,13 @@ class DAPT(pl.LightningModule):
         optimizer.step()
         if self._optim_type == 'adamw':
             self.set_lr_per_iteration(optimizer, 1. * local_step)
+
+        self.last_output = {
+            "image" : image,
+            "bbox" : x['bbox'],
+            "gt_mask" : x['gt_mask'],
+            "seg" : (student_seg_sigmoid >= 0.5).float()
+        }
     
     def set_lr_per_iteration(self, optimizer, local_step):
         args = self.args
@@ -369,7 +357,55 @@ class DAPT(pl.LightningModule):
                 param_group["lr"] = lr
         return lr
 
-
     def training_epoch_end(self, outputs):
         optimizer = self.optimizers()
         self.local_step = 0
+
+        # Sample 5 random images and their corresponding segmentation maps for visualization
+        images, segmentations = self.sample_images_and_segmentations()
+        for idx, (image, segmentation) in enumerate(zip(images, segmentations)):
+            overlay_image = self.overlay_segmentation_on_image(image, segmentation)
+            wandb.log({
+                f"Overlayed Image {idx + 1}": [wandb.Image(overlay_image, caption=f"Overlay {idx + 1}")]
+            }, step=self.current_epoch)
+        
+        # Save model weights every args.save_dapt_cp epochs
+        if (self.current_epoch + 1) % self.args.save_dapt_cp_every_x_epochs == 0:
+            checkpoint_name = self.args.dapt_cp_path
+            self.trainer.save_checkpoint(checkpoint_name)
+
+
+
+    
+    def sample_images_and_segmentations(self, num_samples=5):
+        # This method should return pairs of original images and their segmentation maps 
+        # For simplicity, let's assume `self.last_output` is a dictionary 
+        # that contains 'image' and 'seg' keys which store batch of images and segmentations
+
+        indices = random.sample(range(self.last_output['image'].shape[0]), num_samples)
+
+        sampled_images = [self.last_output['image'][i] for i in indices]
+        sampled_segmentations = [self.last_output['seg'][i] for i in indices]
+
+        return sampled_images, sampled_segmentations
+    
+    def overlay_segmentation_on_image(self, image, segmentation):
+        """
+        Overlay the segmentation on top of the image.
+        Assumes both image and segmentation are torch tensors.
+        """
+        image = (image - image.min()) / (image.max() - image.min())
+
+        C, oh, ow = image.shape
+        segmentation = segmentation[None,None,...]
+        segmentation  = F.interpolate(segmentation, size=(oh, ow), mode='bilinear', align_corners=False).reshape(-1, oh, ow)
+        
+        # Convert tensors to numpy
+        image_np = image.permute(1, 2, 0).cpu().numpy()
+        segmentation_np = segmentation.squeeze(0).cpu().numpy()
+
+        # Blend the segmentation mask onto the image
+        alpha = 0.3  # Adjust the blending strength
+        overlayed_image = (1 - alpha) * image_np + alpha * segmentation_np[..., None]
+
+        return overlayed_image
