@@ -30,6 +30,7 @@ import detectron2
 from models.prismer.experts.generate_depth import model as model_depth
 import torchvision.transforms as transforms
 
+from detectron2.data.datasets.builtin_meta import COCO_CATEGORIES, CITYSCAPES_CATEGORIES
 
 # # Load depth map from file: 
 
@@ -79,11 +80,35 @@ class MaskDinoLabels(Dataset):
         self._filter_imgs()
         self.get_category_mapping()
 
+        if img_data_dir.split('/')[-1] == "val":
+            self.val_flag = True
+        else:
+            self.val_flag = False
+
         ###################################################################################
         self.maskdino_annotations, self.maskdino_len = self._load_annotations_from_json_folder()
 
         # Create JSON 
-    
+    def _is_name_in_cityscapes(self, coco_id):
+        # Extract the name for the given COCO ID
+        coco_name = next((cat["name"] for cat in COCO_CATEGORIES if cat["id"] == coco_id), None)
+        
+        # If the name doesn't exist in COCO_CATEGORIES, return False
+        if coco_name is None:
+            return False
+        
+        # Check if the name exists in CITYSCAPES_CATEGORIES
+        return any(cat["name"] == coco_name for cat in CITYSCAPES_CATEGORIES)
+
+    def _filter_json(self, bbox):
+        # Calc object size and check if it smaller the self.min_obj_size
+        obj_size = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+        if obj_size < self.min_obj_size or obj_size > self.max_obj_size:
+            return False
+        else:
+            return True
+
+
     def _load_annotations_from_json_folder(self):
         """
         Load annotations from JSON files in the given folder.
@@ -97,12 +122,16 @@ class MaskDinoLabels(Dataset):
 
         folder_path = '/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels'
         
+        if self.val_flag:
+            folder_path = folder_path + "/leftImg8bit/val"
+        else:
+            folder_path = folder_path + "/leftImg8bit/train"
         # List to store all annotations
         annotations = []
         
         # Running index for annotations across all JSON files
         annotation_id = 0
-
+        
         # Traverse through all JSON files in the folder
         for dirpath, dirnames, filenames in os.walk(folder_path):
             for filename in filenames:
@@ -112,8 +141,17 @@ class MaskDinoLabels(Dataset):
                         
                         # Assuming each JSON file has a key 'annotations' that contains all the annotations
                         for i in range(len(data['pred_classes'])):
+                            # Check size of data['pred_boxes'][i] if zero - continue : 
+                            data['pred_boxes'][i] = [max(val, 0) for val in data['pred_boxes'][i]]
+                            size_fit = self._filter_json(data['pred_boxes'][i])
+                            class_fit = self._is_name_in_cityscapes(coco_id=data['pred_classes'][i])
+                            if not size_fit or not class_fit:
+                                continue
+
                             annotation_dict = {
                                 'segmentation': data['segmentation'][i],
+                                'gt_polygon': data['gt_polygon'][i],
+                                'gt_class': data['gt_classes'][i],
                                 'pred_box': data['pred_boxes'][i],
                                 'pred_class': data['pred_classes'][i],
                                 'score': data['scores'][i],
@@ -181,7 +219,7 @@ class MaskDinoLabels(Dataset):
 
 
     def __len__(self):
-        return 128 #self.maskdino_len
+        return self.maskdino_len
     
     def __getitem__(self, idx):
         # ann = self.coco.dataset['annotations'][idx]
@@ -210,11 +248,17 @@ class MaskDinoLabels(Dataset):
         else:
             rle = mask_f.frPyObjects(ann_maskdino["segmentation"], h, w)
             dino_mask = mask_f.decode(rle)
+            gt_rle = mask_f.frPyObjects(ann_maskdino["gt_polygon"], h, w)
+            gt_mask = mask_f.decode(gt_rle)
         if len(dino_mask.shape) == 3 and dino_mask.shape[2] > 1:
             # Merge channels using OR operation
             dino_mask = np.any(dino_mask, axis=2).astype(np.uint8)
+        if len(gt_mask.shape) == 3 and gt_mask.shape[2] > 1:
+            gt_mask = np.any(gt_mask, axis=2).astype(np.uint8)
+
         
         dino_mask = dino_mask.squeeze()
+        gt_mask = gt_mask.squeeze()
         
         ############################################################
         # box mask
@@ -233,7 +277,7 @@ class MaskDinoLabels(Dataset):
         ############################################################################################
         data = {'image': img, 'mask': mask, 'height': h, 'width': w, 
                 'category_id': ann_maskdino['pred_class'], 'bbox': bbox.astype(float),
-                'id': ann_maskdino['id'], 'depth': depth_map, 'gt_mask': dino_mask}
+                'id': ann_maskdino['id'], 'depth': depth_map, 'gt_mask': gt_mask, 'dino_mask': dino_mask}
 
         if self.transform is not None:
             data = self.transform(data)

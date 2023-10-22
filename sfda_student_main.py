@@ -20,8 +20,6 @@ from pytorch_lightning.loggers import WandbLogger
 
 from datasets.pl_data_module import WSISDataModule, datapath_configs
 
-from collections import OrderedDict
-
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -29,7 +27,7 @@ def parse_args():
     # load config
     parser.add_argument("--val_only", action='store_true', default=False)
     parser.add_argument("--box_inputs", type=str, default=None)
-    # parser.add_argument("--resume", type=str, default="/workspace/mask-auto-labeler/dapt_weights.ckpt", help='Weight name to be resumed')
+    #parser.add_argument("--resume", type=str, default="/workspace/mask-auto-labeler/epoch=6-arch=vit-mae-base-16-not_adjust_scale=False-mask_scale_ratio_pre=1.ckpt", help='Weight name to be resumed')
     parser.add_argument("--resume", type=str, default=None, help='Weight name to be resumed')
     parser.add_argument('--val_interval', default=1, type=int)
 
@@ -46,7 +44,7 @@ def parse_args():
     parser.add_argument('--strategy', default='ddp_sharded', type=str)
     parser.add_argument('--num_mp_devices', default=None, type=int)
 
-    parser.add_argument('--optim_type', default='sgd', type=str, choices=['sgd', 'adamw'])
+    parser.add_argument('--optim_type', default='adamw', type=str, choices=['sgd', 'adamw'])
     parser.add_argument('--optim_momentum', default=0.9, type=float)
     # parameters for annealLR + adamW
     # parser.add_argument('--lr', default=0.001, type=float)
@@ -64,7 +62,7 @@ def parse_args():
     parser.add_argument('--max_epochs', default=20, type=int)
     parser.add_argument('--save_every_k_epoch', default=1, type=int)
 
-    parser.add_argument('--image_size', default=20480, type=int)
+    parser.add_argument('--image_size', default=2048, type=int)
     parser.add_argument('--margin_rate', default="0,1.2", type=str)
     parser.add_argument('--test_margin_rate', default='0.6,0.6', type=str)
     parser.add_argument('--crop_size', default=512, type=int)
@@ -92,7 +90,7 @@ def parse_args():
 
     # loss option
     parser.add_argument('--loss_mil_weight', default=4, type=float)
-    parser.add_argument('--loss_crf_weight', default=10, type=float)
+    parser.add_argument('--loss_crf_weight', default=0.5, type=float)
 
     # crf option
     parser.add_argument('--crf_zeta', default=0.1, type=float)
@@ -210,17 +208,8 @@ if __name__ == '__main__':
         if args.box_inputs is not None:
             model = MALPseudoLabels(args=args, num_iter_per_epoch=num_iter_per_epoch)
         else:
-            model = MAL(args=args, num_iter_per_epoch=num_iter_per_epoch)
-            # model = DAPT(args=args, num_iter_per_epoch=num_iter_per_epoch)
-            # Load SFDA weights : 
-            checkpoint = torch.load('/workspace/mask-auto-labeler/dapt_weights_new_after_crop_fix.ckpt')
-            student_state_dict = checkpoint['state_dict']
-            new_student_state_dict = OrderedDict()
-            for key, value in student_state_dict.items():
-                new_student_state_dict[key] = value
-            model.load_state_dict(new_student_state_dict, strict=False)
-
-
+            # model = MAL(args=args, num_iter_per_epoch=num_iter_per_epoch)
+            model = DAPT(args=args, num_iter_per_epoch=num_iter_per_epoch)
 
         checkpoint_callback = ModelCheckpoint(
                                 dirpath=os.path.join("work_dirs", args.dataset_type),

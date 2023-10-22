@@ -24,7 +24,93 @@ from .voc import DataWrapper
 
 import torch.nn.functional as F
 
-def custom_crop_image(img, box):
+def custom_crop_image_for_sfda(img, box, orig_box):
+
+    ret_shape = list(img.shape)
+    ret_shape[:2] = box[3] - box[1], box[2] - box[0]
+    h, w = img.shape[:2] 
+
+    ret_img = np.zeros(ret_shape)
+
+    def compute_slices(source_start, source_end, target_start, target_end):
+        length = min(source_end - source_start, target_end - target_start)
+        return slice(source_start, source_start + length), slice(target_start, target_start + length)
+
+    # top left
+    if box[0] < 0 and box[1] < 0:
+        src_y, tgt_y = compute_slices(0, -box[1], 0, h)
+        src_x, tgt_x = compute_slices(0, -box[0], 0, w)
+
+    # middle top
+    elif box[0] >= 0 and box[2] <= w and box[1] < 0:
+        src_y, tgt_y = compute_slices(0, -box[1], 0, h)
+        src_x, tgt_x = compute_slices(box[0], box[2], 0, box[2] - box[0])
+
+    # top right
+    elif box[2] > w and box[1] < 0:
+        src_y, tgt_y = compute_slices(0, -box[1], 0, h)
+        src_x, tgt_x = compute_slices(0, w, ret_shape[1] - (box[2] - w), ret_shape[1])
+
+    # middle left
+    elif box[0] < 0 and box[1] >= 0 and box[3] <= h:
+        src_y, tgt_y = compute_slices(box[1], box[3], 0, box[3] - box[1])
+        src_x, tgt_x = compute_slices(0, -box[0], 0, w)
+
+    # middle right
+    elif box[2] > w and box[1] >= 0 and box[3] <= h:
+        src_y, tgt_y = compute_slices(box[1], box[3], 0, box[3] - box[1])
+        src_x, tgt_x = compute_slices(0, w, ret_shape[1] - (box[2] - w), ret_shape[1])
+
+    # bottom left
+    elif box[0] < 0 and box[3] > h:
+        src_y, tgt_y = compute_slices(0, h, ret_shape[0] - (box[3] - h), ret_shape[0])
+        src_x, tgt_x = compute_slices(0, -box[0], 0, w)
+
+    # middle bottom
+    elif box[0] >= 0 and box[2] <= w and box[3] > h:
+        src_y, tgt_y = compute_slices(0, h, ret_shape[0] - (box[3] - h), ret_shape[0])
+        src_x, tgt_x = compute_slices(box[0], box[2], 0, box[2] - box[0])
+
+    # bottom right
+    elif box[2] > w and box[3] > h:
+        src_y, tgt_y = compute_slices(0, h, ret_shape[0] - (box[3] - h), ret_shape[0])
+        src_x, tgt_x = compute_slices(0, w, ret_shape[1] - (box[2] - w), ret_shape[1])
+
+    # middle
+    else:
+        src_y, tgt_y = compute_slices(box[1], box[3], 0, box[3] - box[1])
+        src_x, tgt_x = compute_slices(box[0], box[2], 0, box[2] - box[0])
+    
+    if len(img.shape) == 3:  # 3D (e.g. height x width x channels)
+        if ret_img[tgt_y, tgt_x, :].shape == img[src_y, src_x, :].shape:
+            ret_img[tgt_y, tgt_x, :] = img[src_y, src_x, :]
+        else:
+            orig_box = orig_box.astype(int)
+            ret_img = img[orig_box[1]:orig_box[3]+2, orig_box[0]:orig_box[2]+2,:]
+            
+    elif len(img.shape) == 2:  # 2D (e.g. height x width)
+        if ret_img[tgt_y, tgt_x].shape == img[src_y, src_x].shape:
+            ret_img[tgt_y, tgt_x] = img[src_y, src_x]
+        else:
+            orig_box = orig_box.astype(int)
+            ret_img = img[orig_box[1]:orig_box[3]+2, orig_box[0]:orig_box[2]+2]
+    
+    BLACK_THRESHOLD=0.9
+
+    black_pixels = np.sum(ret_img == 0)
+    total_pixels = ret_img.size
+
+    if len(img.shape) == 3:  # For RGB images
+        black_pixels /= 3  # as we counted black pixels for each channel
+
+    black_percentage = black_pixels / total_pixels
+
+    if black_percentage > BLACK_THRESHOLD:
+        raise ValueError(f"Black area percentage in the cropped image is {black_percentage:.2%}, which is above the threshold.")
+    
+    return ret_img
+
+def custom_crop_image(img, box, orig_box):
     # I implement this special `crop image` function
     # that aims at getting `no padding` cropped image.
     # Implementation Details:
@@ -89,6 +175,19 @@ def custom_crop_image(img, box):
     ret_img[max(0, -box[1]): min(h, box[3]) - box[1], max(0, -box[0]): min(w, box[2]) - box[0]] = \
         img[max(box[1], 0): min(h, box[3]), max(box[0], 0): min(w, box[2])]
 
+    BLACK_THRESHOLD=0.9
+
+    black_pixels = np.sum(ret_img == 0)
+    total_pixels = ret_img.size
+
+    if len(img.shape) == 3:  # For RGB images
+        black_pixels /= 3  # as we counted black pixels for each channel
+
+    black_percentage = black_pixels / total_pixels
+
+    if black_percentage > BLACK_THRESHOLD:
+        print(f"Black area percentage in the cropped image is {black_percentage:.2%}, which is above the threshold.")
+    
     return ret_img
 
 
@@ -154,14 +253,14 @@ class RandomCropV2:
 
         # crop image
         if 'image' in self._crop_fields:
-            ret_img = custom_crop_image(img, extbox)
+            ret_img = custom_crop_image(img, extbox, box)
             ret_img = Image.fromarray(ret_img.astype(np.uint8)).resize((self._max_size, self._max_size))
             data['image'] = ret_img
 
         # crop mask
         if 'mask' in self._crop_fields and 'mask' in data.keys():
             mask = np.array(data['mask'])
-            ret_mask = custom_crop_image(mask, extbox)
+            ret_mask = custom_crop_image(mask, extbox, box)
             ret_mask = Image.fromarray(ret_mask.astype(np.uint8)).resize((self._max_size, self._max_size))
             ret_mask = np.array(ret_mask)
             data['mask'] = ret_mask
@@ -212,13 +311,13 @@ class RandomCropV3(RandomCropV2):
 
         # crop image
         if 'image' in self._crop_fields:
-            ret_img = custom_crop_image(img, extbox)
+            ret_img = custom_crop_image(img, extbox, box)
             ret_img = Image.fromarray(ret_img.astype(np.uint8)).resize((self._max_size, self._max_size))
             data['image'] = ret_img
 
             # crop depth
             depth = np.array(data['depth'].permute(1, 2, 0)) # (1024, 2048, 1)
-            ret_depth = custom_crop_image(depth, extbox) # (216, 135, 1)
+            ret_depth = custom_crop_image(depth, extbox, box) # (216, 135, 1)
             
             # resize depth
             ret_depth = torch.from_numpy(ret_depth)
@@ -230,7 +329,7 @@ class RandomCropV3(RandomCropV2):
 
             # crop gt mask
             gt_mask = np.array(data['gt_mask'][:, :, None]) # (1024, 2048, 1)
-            ret_gt_mask = custom_crop_image(gt_mask, extbox) # (216, 135, 1)
+            ret_gt_mask = custom_crop_image(gt_mask, extbox, box) # (216, 135, 1)
             
             # resize depth
             ret_gt_mask = torch.from_numpy(ret_gt_mask)
@@ -244,7 +343,7 @@ class RandomCropV3(RandomCropV2):
         # crop mask
         if 'mask' in self._crop_fields:
             mask = np.array(data['mask'])
-            ret_mask = custom_crop_image(mask, extbox)
+            ret_mask = custom_crop_image(mask, extbox, box)
             ret_mask = Image.fromarray(ret_mask.astype(np.uint8)).resize((self._max_size, self._max_size))
             ret_mask = np.array(ret_mask)
             data['mask'] = ret_mask

@@ -47,7 +47,8 @@ from models.MultiModelCrf import visualize_and_save_feature_map, visualize_and_s
 from models.prismer.experts.generate_depth import model as model_depth
 model_depth0 = model_depth.cuda(0)
 # model_depth1 = model_depth.cuda(1)
-iou_arr = []
+
+import wandb
 
 class MeanField(nn.Module):
 
@@ -107,7 +108,7 @@ class MeanField(nn.Module):
 
             intersection = np.logical_and(target, prediction)
             union = np.logical_or(target, prediction)
-            iou_score = np.sum(intersection) / np.sum(union)
+            iou_score = np.sum(intersection) / (np.sum(union) + 1e-6)
             iou_scores.append(iou_score)
 
         # Convert list to tensor
@@ -116,7 +117,7 @@ class MeanField(nn.Module):
         return iou_scores
 
     @torch.no_grad()
-    def forward(self, feature_map, seg, depth_map, targets=None):
+    def forward(self, feature_map, seg, depth_map, targets=None, weakly_supervised_targets=None):
         
         #################################################################################################################
         orig_image = feature_map.float()
@@ -173,25 +174,74 @@ class MeanField(nn.Module):
         mask_rgb_depth = (seg_after_rgb_depth > 0.5).float()
         
         ############################################################################################################
-        # IoU Calculation : 
-
+        # IoU Calculation :
+        #  
+        orig_iou = self.calculate_iou(targets, orig_mask)
         rgb_iou = self.calculate_iou(targets, rgb_mask)
         depth_iou = self.calculate_iou(targets, mask_rgb_depth)
-        iou_arr.append(rgb_iou)
-        print(len(iou_arr))
-        if torch.any(rgb_iou < 0.8):
-            if torch.any(rgb_iou[rgb_iou < 0.8] > 0.7):
-                visualize_and_save_all(feature_map[rgb_iou < 0.8,:,:,:], 
-                                    seg_original=orig_mask[rgb_iou < 0.8,:,:], 
-                                    seg_rgb=rgb_mask[rgb_iou < 0.8,:,:], 
-                                    seg_depth=mask_rgb_depth[rgb_iou < 0.8,:,:],
-                                    depth_map=depth_map[rgb_iou < 0.8,:,:],
-                                    seg_gt = targets[rgb_iou < 0.8,:,:],
-                                    base_file_name="Med_IoU")
-        
+        batch_ious = (np.mean(orig_iou.cpu().numpy()), np.mean(rgb_iou.cpu().numpy()), np.mean(depth_iou.cpu().numpy()))
+
+        # # Calculate the difference between rgb_iou and orig_iou in percentage terms
+        # iou_difference = (rgb_iou - orig_iou) 
+
+        # # Find the indices where rgb_iou is less than orig_iou by more than 10%
+        # less_indices = torch.where(iou_difference < -0.01)
+
+        # # Find the indices where rgb_iou is greater than orig_iou by more than 10%
+        # greater_indices = torch.where(iou_difference > 0.01)
+
+        # # If there are any elements in less_indices, visualize them
+        # if len(less_indices[0]) > 0:
+        #     visualize_and_save_all(feature_map[less_indices], 
+        #                         seg_original=orig_mask[less_indices], 
+        #                         seg_rgb=rgb_mask[less_indices], 
+        #                         seg_depth=mask_rgb_depth[less_indices],
+        #                         depth_map=depth_map[less_indices],
+        #                         seg_gt=targets[less_indices],
+        #                         base_file_name="RGB_LessThan_Orig_IoU")
+
+        # # If there are any elements in greater_indices, visualize them
+        # if len(greater_indices[0]) > 0:
+        #     visualize_and_save_all(feature_map[greater_indices], 
+        #                         seg_original=orig_mask[greater_indices], 
+        #                         seg_rgb=rgb_mask[greater_indices], 
+        #                         seg_depth=mask_rgb_depth[greater_indices],
+        #                         depth_map=depth_map[greater_indices],
+        #                         seg_gt=targets[greater_indices],
+        #                         base_file_name="RGBGreaterThan_Orig_IoU")
+
+        # # Calculate the difference between depth_iou and orig_iou in percentage terms
+        # iou_difference_depth = (depth_iou - orig_iou)
+
+        # # Find the indices where depth_iou is less than orig_iou by more than 10%
+        # less_indices_depth = torch.where(iou_difference_depth < -0.01)
+
+        # # Find the indices where depth_iou is greater than orig_iou by more than 10%
+        # greater_indices_depth = torch.where(iou_difference_depth > 0.01)
+
+        # # If there are any elements in less_indices_depth, visualize them
+        # if len(less_indices_depth[0]) > 0:
+        #     visualize_and_save_all(feature_map[less_indices_depth], 
+        #                         seg_original=orig_mask[less_indices_depth], 
+        #                         seg_rgb=rgb_mask[less_indices_depth], 
+        #                         seg_depth=mask_rgb_depth[less_indices_depth],
+        #                         depth_map=depth_map[less_indices_depth],
+        #                         seg_gt=targets[less_indices_depth],
+        #                         base_file_name="Depth_LessThan_Orig_IoU")
+
+        # # If there are any elements in greater_indices_depth, visualize them
+        # if len(greater_indices_depth[0]) > 0:
+        #     visualize_and_save_all(feature_map[greater_indices_depth], 
+        #                         seg_original=orig_mask[greater_indices_depth], 
+        #                         seg_rgb=rgb_mask[greater_indices_depth], 
+        #                         seg_depth=mask_rgb_depth[greater_indices_depth],
+        #                         depth_map=depth_map[greater_indices_depth],
+        #                         seg_gt=targets[greater_indices_depth],
+        #                         base_file_name="Depth_GreaterThan_Orig_IoU")
+
         ############################################################################################################
 
-        return (seg_after_rgb > 0.5).float()
+        return (seg_after_rgb > 0.5).float(), batch_ious
 
     def single_forward(self, x, kernel, targets, B, H, W, it):
         x = x[:, None]
@@ -466,9 +516,9 @@ class MAL(pl.LightningModule):
         optimizer = torch.optim.SGD(self.parameters(), lr=self._lr, momentum=0.9)
         return optimizer 
 
-    def crf_loss(self, img, seg, tseg, boxmask, depth):
-        refined_mask = self.mean_field(img, tseg, depth, targets=boxmask) 
-        return self.dice_loss(seg, refined_mask).mean(), refined_mask
+    def crf_loss(self, img, seg, tseg, gt_mask, depth, dino_mask):
+        refined_mask, ious = self.mean_field(img, tseg, depth, targets=gt_mask, weakly_supervised_targets=dino_mask) 
+        return self.dice_loss(seg, refined_mask).mean(), refined_mask, ious
 
     def dice_loss(self, input, target):
         input = input.contiguous().view(input.size()[0], -1).float()
@@ -528,7 +578,7 @@ class MAL(pl.LightningModule):
                 step_mil_loss_weight = min(1, 1. * local_step / self.args.loss_mil_step)
             loss_mil *= step_mil_loss_weight
             loss_mil = loss_mil.sum() / (loss_mil.numel() + 1e-4) * self.loss_mil_weight
-            loss.update({'mil': loss_mil})
+            # loss.update({'mil': loss_mil})
             # Tensorboard logs
             self.log("train/loss_mil", loss_mil, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
 
@@ -550,7 +600,12 @@ class MAL(pl.LightningModule):
             # resize gt_mask
             scaled_gt_mask = F.interpolate(x['gt_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
             
-            loss_crf, pseudo_label = self.crf_loss(scaled_img, scaled_stu_seg, (scaled_stu_seg + scaled_tea_seg)/2, scaled_gt_mask, scaled_depth)
+            #resize dino_mask
+            # scaled_dino_mask = F.interpolate(x['dino_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            # TODO : Fix this from gt_mask to dinomask:
+            scaled_dino_mask = F.interpolate(x['gt_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            
+            loss_crf, pseudo_label, ious = self.crf_loss(scaled_img, scaled_stu_seg, (scaled_stu_seg + scaled_tea_seg)/2, scaled_gt_mask, scaled_depth, scaled_dino_mask)
             if self.current_epoch > 0:
                 step_crf_loss_weight = 1
             else:
@@ -558,6 +613,7 @@ class MAL(pl.LightningModule):
             loss_crf *= self.loss_crf_weight * step_crf_loss_weight
             loss.update({'crf': loss_crf})
             self.log("train/loss_crf", loss_crf, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
+            
         else:
             raise NotImplementedError
 
@@ -573,6 +629,18 @@ class MAL(pl.LightningModule):
         if self._optim_type == 'adamw':
             self.set_lr_per_iteration(optimizer, 1. * local_step)
         self.teacher.update(self.student)
+        
+        orig_iou, rgb_iou, depth_iou = ious
+
+        wandb.log({
+            "train/loss": total_loss,
+            "lr": optimizer.param_groups[0]['lr'],
+            "train/bs": image.shape[0],
+            "epoch" : self.current_epoch,
+            "orig_iou" : orig_iou,
+            "rgb_iou" : rgb_iou,
+            "depth_iou" : depth_iou
+        })
     
     def set_lr_per_iteration(self, optimizer, local_step):
         args = self.args

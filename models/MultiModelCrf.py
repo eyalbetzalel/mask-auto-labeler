@@ -260,7 +260,5 @@ def visualize_and_save_all(feature_map, seg_original, seg_rgb, seg_depth, depth_
         else:
             # Use the original file name
             plt.savefig(original_file_name, bbox_inches='tight', pad_inches=0)
-
-
-        plt.savefig(base_file_name + f"_combined_{i}.png", bbox_inches='tight', pad_inches=0)
+            
         plt.close()

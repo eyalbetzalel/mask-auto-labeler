@@ -268,7 +268,7 @@ class WSISDataModule(pl.LightningDataModule):
             self.test_transform = data_aug_pipelines[args.test_transform](args)
         else:
             raise NotImplementedError
-
+        # if False:
         if load_train:
             transform = self.train_transform
             if self.args.dataset_type == 'voc':
@@ -304,10 +304,10 @@ class WSISDataModule(pl.LightningDataModule):
         
         if load_val:
             if self.args.box_inputs == None:
-                transform = self.test_transform
+                transform = self.train_transform
                 if self.args.dataset_type == 'voc':
                     build_dataset = InstSegVOC
-                elif self.args.dataset_type in ['coco', 'coco_original', 'astro', 'maskdino']:
+                elif self.args.dataset_type in ['coco', 'coco_original', 'astro']:
                     build_dataset = InstSegCOCO
                 elif self.args.dataset_type == 'cocolmdb':
                     build_dataset = InstSegCOCOLMDB
@@ -319,6 +319,8 @@ class WSISDataModule(pl.LightningDataModule):
                     build_dataset = InstSegYTVIS
                 elif self.args.dataset_type == 'cityscapes':
                     build_dataset = BoxLabelCityscapes
+                elif self.args.dataset_type == 'maskdino':
+                    build_dataset = MaskDinoLabels
                 else:
                     raise NotImplementedError
                 datapath_config = datapath_configs[self.args.dataset_type]
@@ -327,7 +329,7 @@ class WSISDataModule(pl.LightningDataModule):
                                           datapath_config[config_type]["val_img_data_dir"],
                                           min_obj_size=0, 
                                           max_obj_size=1e9,
-                                          load_mask=not self.args.not_eval_mask, transform=transform)
+                                          transform=transform)
                 data_loader = DataLoader(dataset, collate_fn=custom_collate_fn,
                                          batch_size=self.args.batch_size, num_workers=self.num_workers)
                 self._val_data_loader = data_loader

@@ -362,12 +362,13 @@ class DAPT(pl.LightningModule):
         self.local_step = 0
 
         # Sample 5 random images and their corresponding segmentation maps for visualization
-        images, segmentations = self.sample_images_and_segmentations()
-        for idx, (image, segmentation) in enumerate(zip(images, segmentations)):
-            overlay_image = self.overlay_segmentation_on_image(image, segmentation)
-            wandb.log({
-                f"Overlayed Image {idx + 1}": [wandb.Image(overlay_image, caption=f"Overlay {idx + 1}")]
-            }, step=self.current_epoch)
+        images, segmentations, sampled_gt_seg = self.sample_images_and_segmentations()
+        examples = []
+        
+        for idx, (image, segmentation, gt_seg) in enumerate(zip(images, segmentations, sampled_gt_seg)):
+            overlay_image = self.overlay_segmentation_on_image_2(image, gt_seg, segmentation)
+            examples.append(wandb.Image(overlay_image, caption=f"Ep. {self.current_epoch + 1} | ID {idx + 1}"))
+        wandb.log({"Images": examples})
         
         # Save model weights every args.save_dapt_cp epochs
         if (self.current_epoch + 1) % self.args.save_dapt_cp_every_x_epochs == 0:
@@ -386,8 +387,8 @@ class DAPT(pl.LightningModule):
 
         sampled_images = [self.last_output['image'][i] for i in indices]
         sampled_segmentations = [self.last_output['seg'][i] for i in indices]
-
-        return sampled_images, sampled_segmentations
+        sampled_gt_seg = [self.last_output['gt_mask'][i] for i in indices] 
+        return sampled_images, sampled_segmentations, sampled_gt_seg
     
     def overlay_segmentation_on_image(self, image, segmentation):
         """
@@ -409,3 +410,48 @@ class DAPT(pl.LightningModule):
         overlayed_image = (1 - alpha) * image_np + alpha * segmentation_np[..., None]
 
         return overlayed_image
+
+    def overlay_segmentation_on_image_2(self, image, ground_truth_segmentation, predicted_segmentation):
+        """
+        Overlay the ground truth and predicted segmentation on top of the image.
+        Assumes image, ground_truth_segmentation, and predicted_segmentation are torch tensors.
+        """
+        image = (image - image.min()) / (image.max() - image.min())
+
+        C, oh, ow = image.shape
+        
+        ground_truth_segmentation = ground_truth_segmentation[None,...]
+        #ground_truth_segmentation  = F.interpolate(ground_truth_segmentation, size=(oh, ow), mode='bilinear', align_corners=False).squeeze(0)
+        
+        predicted_segmentation = predicted_segmentation[None,None,...]
+        predicted_segmentation = F.interpolate(predicted_segmentation, size=(oh, ow), mode='bilinear', align_corners=False).squeeze(0)
+        
+        # Convert tensors to numpy
+        image_np = image.permute(1, 2, 0).cpu().numpy()
+        gt_np = ground_truth_segmentation.cpu().numpy()
+        pred_np = predicted_segmentation.cpu().numpy()
+
+        # Create the overlayed images
+        gt_colored = np.stack([np.zeros_like(gt_np), gt_np, np.zeros_like(gt_np)], axis=-1)
+        pred_colored = np.stack([pred_np, np.zeros_like(pred_np), np.zeros_like(pred_np)], axis=-1)
+
+        gt_colored = np.squeeze(gt_colored)
+        pred_colored = np.squeeze(pred_colored)
+
+        alpha = 0.3  # Adjust the blending strength
+        overlayed_gt = (1 - alpha) * image_np + alpha * gt_colored
+        overlayed_pred = (1 - alpha) * image_np + alpha * pred_colored
+        
+        # Stack images vertically
+        combined_img = np.vstack([overlayed_gt, overlayed_pred])
+        combined_img = (combined_img * 255).astype(np.uint8)
+
+        # Add text labels using OpenCV
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = 0.5
+        thickness = 2
+        color_text = (255, 255, 255)  # white
+        cv2.putText(combined_img, "Ground Truth", (10, 25), font, scale, color_text, thickness)
+        cv2.putText(combined_img, "Predicted", (10, oh + 25), font, scale, color_text, thickness)
+
+        return combined_img
