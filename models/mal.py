@@ -49,6 +49,9 @@ model_depth0 = model_depth.cuda(0)
 # model_depth1 = model_depth.cuda(1)
 
 import wandb
+from torchvision.utils import make_grid
+import random
+import matplotlib.pyplot as plt
 
 class MeanField(nn.Module):
 
@@ -618,9 +621,6 @@ class MAL(pl.LightningModule):
             raise NotImplementedError
 
         total_loss = sum(loss.values())
-        self.log("train/loss", total_loss, on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
-        self.log("lr", optimizer.param_groups[0]['lr'], on_step=True, on_epoch=False, prog_bar=True, sync_dist=True)
-        self.log("train/bs", image.shape[0], on_step=False, on_epoch=True, prog_bar=False, sync_dist=True)
         optimizer.zero_grad()
         self.manual_backward(total_loss)
         for name, param in self.student.named_parameters():
@@ -628,19 +628,23 @@ class MAL(pl.LightningModule):
         optimizer.step()
         if self._optim_type == 'adamw':
             self.set_lr_per_iteration(optimizer, 1. * local_step)
-        self.teacher.update(self.student)
-        
+        self.teacher.update(self.student)        
         orig_iou, rgb_iou, depth_iou = ious
 
         wandb.log({
             "train/loss": total_loss,
-            "lr": optimizer.param_groups[0]['lr'],
-            "train/bs": image.shape[0],
-            "epoch" : self.current_epoch,
-            "orig_iou" : orig_iou,
-            "rgb_iou" : rgb_iou,
-            "depth_iou" : depth_iou
+            "train/epoch" : self.current_epoch,
+            "train/orig_iou" : orig_iou,
+            "train/rgb_iou" : rgb_iou,
+            "train/depth_iou" : depth_iou
         })
+
+        self.last_output_train = {
+            "image" : image,
+            "bbox" : x['bbox'],
+            "gt_mask" : x['gt_mask'],
+            "seg" : (student_seg_sigmoid >= 0.5).float()
+        }
     
     def set_lr_per_iteration(self, optimizer, local_step):
         args = self.args
@@ -657,12 +661,99 @@ class MAL(pl.LightningModule):
                 param_group["lr"] = lr
         return lr
 
-
     def training_epoch_end(self, outputs):
-        optimizer = self.optimizers()
         self.local_step = 0
 
-    def validation_step(self, batch, batch_idx, return_mask=False):
+        # Sample 5 random images and their corresponding segmentation maps for visualization
+        images, segmentations, sampled_gt_seg = self.sample_images_and_segmentations()
+        examples = []
+        
+        for idx, (image, segmentation, gt_seg) in enumerate(zip(images, segmentations, sampled_gt_seg)):
+            overlay_image = self.overlay_segmentation_on_image_2(image, gt_seg, segmentation)
+            examples.append(wandb.Image(overlay_image, caption=f"Ep. {self.current_epoch + 1} | ID {idx + 1}"))
+        wandb.log({"Images": examples})
+        
+        # TODO : Save model weights every args.save_dapt_cp epochs
+        # if (self.current_epoch + 1) % self.args.save_dapt_cp_every_x_epochs == 0:
+        #     checkpoint_name = self.args.dapt_cp_path
+        #     self.trainer.save_checkpoint(checkpoint_name)
+
+    def validation_step(self, x):
+        loss = {}
+        image = x['image']
+
+        local_step = self.local_step
+        self.local_step += 1
+
+        if 'timage' in x.keys():
+            timage = x['timage']
+        else:
+            timage = image
+        student_output = self.student(image, x['mask'], x['bbox'])
+        teacher_output = self.teacher(timage, x['mask'], x['bbox'])
+        B, oh, ow = student_output['seg'].shape[0], student_output['seg'].shape[2], student_output['seg'].shape[3]
+        mask  = F.interpolate(x['mask'], size=(oh, ow), mode='bilinear', align_corners=False).reshape(-1, oh, ow)
+        
+        args = self.args
+
+
+        if 'image' in x:
+            student_seg_sigmoid = torch.sigmoid(student_output['seg'])[:,0].float()
+            teacher_seg_sigmoid = torch.sigmoid(teacher_output['seg'])[:,0].float()
+
+            # Conditional Random Fields Loss
+            th, tw = oh * args.crf_size_ratio, ow * args.crf_size_ratio
+            # resize image
+            scaled_img = F.interpolate(image, size=(th, tw), mode='bilinear', align_corners=False).reshape(B, -1, th, tw)
+            # resize student segmentation
+            scaled_stu_seg = F.interpolate(student_seg_sigmoid[None, ...], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            # resize teacher segmentation
+            scaled_tea_seg = F.interpolate(teacher_seg_sigmoid[None, ...], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            
+            # resize mask
+            # scaled_mask = F.interpolate(x['mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            
+            # resize depth 
+            scaled_depth = F.interpolate(x['depth'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            
+            # resize gt_mask
+            scaled_gt_mask = F.interpolate(x['gt_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            
+            #resize dino_mask
+            # scaled_dino_mask = F.interpolate(x['dino_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            # TODO : Fix this from gt_mask to dinomask:
+            scaled_dino_mask = F.interpolate(x['gt_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            
+            loss_crf, pseudo_label, ious = self.crf_loss(scaled_img, scaled_stu_seg, (scaled_stu_seg + scaled_tea_seg)/2, scaled_gt_mask, scaled_depth, scaled_dino_mask)
+            if self.current_epoch > 0:
+                step_crf_loss_weight = 1
+            else:
+                step_crf_loss_weight = min(1. * local_step / self.loss_crf_step, 1.)
+            loss_crf *= self.loss_crf_weight * step_crf_loss_weight
+            loss.update({'crf': loss_crf})
+            
+        else:
+            raise NotImplementedError
+
+        total_loss = sum(loss.values())        
+        orig_iou, rgb_iou, depth_iou = ious
+
+        wandb.log({
+            "val/loss": total_loss,
+            "val/epoch" : self.current_epoch,
+            "val/orig_iou" : orig_iou,
+            "val/rgb_iou" : rgb_iou,
+            "val/depth_iou" : depth_iou
+        })
+
+        self.last_output_val = {
+            "image" : image,
+            "bbox" : x['bbox'],
+            "gt_mask" : x['gt_mask'],
+            "seg" : (student_seg_sigmoid >= 0.5).float()
+        }
+    
+    def validation_step_old(self, batch, batch_idx, return_mask=False):
         if not self.args.not_eval_mask:
             imgs, gt_masks, masks, labels, ids, boxmasks, boxes, ext_boxes, ext_hs, ext_ws =\
                 batch['image'], batch['gtmask'], batch['mask'], batch['compact_category_id'], \
@@ -775,9 +866,6 @@ class MAL(pl.LightningModule):
             ret_dict['ious'] = batch_ious
         return ret_dict
 
-
-
-
     def get_parameter_groups(self, print_fn=print):
         groups = ([], [], [], [])
 
@@ -803,7 +891,17 @@ class MAL(pl.LightningModule):
                     groups[3].append(value)
         return groups
 
-    def validation_epoch_end(self, validation_step_outputs):
+    def validation_epoch_end(self):
+        # Sample 5 random images and their corresponding segmentation maps for visualization
+        images, segmentations, sampled_gt_seg = self.sample_images_and_segmentations()
+        examples = []
+        
+        for idx, (image, segmentation, gt_seg) in enumerate(zip(images, segmentations, sampled_gt_seg)):
+            overlay_image = self.overlay_segmentation_on_image_2(image, gt_seg, segmentation)
+            examples.append(wandb.Image(overlay_image, caption=f"Ep. {self.current_epoch + 1} | ID {idx + 1}"))
+        wandb.log({"Images": examples})
+
+    def validation_epoch_end_old(self, validation_step_outputs):
         mIoU = self.mIoUMetric.compute()
         self.log("val/mIoU", mIoU, on_epoch=True, prog_bar=True, sync_dist=True)
         if dist.get_rank() == 0:
@@ -839,6 +937,88 @@ class MAL(pl.LightningModule):
                 print("val/mIoU_{}: {}".format(name, area_mIoU))
             self.areaMIoUMetrics[i].reset()
 
+    def sample_images_and_segmentations(self, num_samples=5, val_flag=True):
+
+        if val_flag:
+            last_output = self.last_output_val
+        else:
+            last_output = self.last_output_train
+        # This method should return pairs of original images and their segmentation maps 
+        # For simplicity, let's assume `self.last_output` is a dictionary 
+        # that contains 'image' and 'seg' keys which store batch of images and segmentations
+
+        indices = random.sample(range(last_output['image'].shape[0]), num_samples)
+
+        sampled_images = [last_output['image'][i] for i in indices]
+        sampled_segmentations = [last_output['seg'][i] for i in indices]
+        sampled_gt_seg = [last_output['gt_mask'][i] for i in indices] 
+        return sampled_images, sampled_segmentations, sampled_gt_seg
+    
+    def overlay_segmentation_on_image(self, image, segmentation):
+        """
+        Overlay the segmentation on top of the image.
+        Assumes both image and segmentation are torch tensors.
+        """
+        image = (image - image.min()) / (image.max() - image.min())
+
+        C, oh, ow = image.shape
+        segmentation = segmentation[None,None,...]
+        segmentation  = F.interpolate(segmentation, size=(oh, ow), mode='bilinear', align_corners=False).reshape(-1, oh, ow)
+        
+        # Convert tensors to numpy
+        image_np = image.permute(1, 2, 0).cpu().numpy()
+        segmentation_np = segmentation.squeeze(0).cpu().numpy()
+
+        # Blend the segmentation mask onto the image
+        alpha = 0.3  # Adjust the blending strength
+        overlayed_image = (1 - alpha) * image_np + alpha * segmentation_np[..., None]
+
+        return overlayed_image
+
+    def overlay_segmentation_on_image_2(self, image, ground_truth_segmentation, predicted_segmentation):
+        """
+        Overlay the ground truth and predicted segmentation on top of the image.
+        Assumes image, ground_truth_segmentation, and predicted_segmentation are torch tensors.
+        """
+        image = (image - image.min()) / (image.max() - image.min())
+
+        C, oh, ow = image.shape
+        
+        ground_truth_segmentation = ground_truth_segmentation[None,...]
+        #ground_truth_segmentation  = F.interpolate(ground_truth_segmentation, size=(oh, ow), mode='bilinear', align_corners=False).squeeze(0)
+        
+        predicted_segmentation = predicted_segmentation[None,None,...]
+        predicted_segmentation = F.interpolate(predicted_segmentation, size=(oh, ow), mode='bilinear', align_corners=False).squeeze(0)
+        
+        # Convert tensors to numpy
+        image_np = image.permute(1, 2, 0).cpu().numpy()
+        gt_np = ground_truth_segmentation.cpu().numpy()
+        pred_np = predicted_segmentation.cpu().numpy()
+
+        # Create the overlayed images
+        gt_colored = np.stack([np.zeros_like(gt_np), gt_np, np.zeros_like(gt_np)], axis=-1)
+        pred_colored = np.stack([pred_np, np.zeros_like(pred_np), np.zeros_like(pred_np)], axis=-1)
+
+        gt_colored = np.squeeze(gt_colored)
+        pred_colored = np.squeeze(pred_colored)
+
+        alpha = 0.3  # Adjust the blending strength
+        overlayed_gt = (1 - alpha) * image_np + alpha * gt_colored
+        overlayed_pred = (1 - alpha) * image_np + alpha * pred_colored
+        
+        # Stack images vertically
+        combined_img = np.vstack([overlayed_gt, overlayed_pred])
+        combined_img = (combined_img * 255).astype(np.uint8)
+
+        # Add text labels using OpenCV
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = 0.5
+        thickness = 2
+        color_text = (255, 255, 255)  # white
+        cv2.putText(combined_img, "Ground Truth", (10, 25), font, scale, color_text, thickness)
+        cv2.putText(combined_img, "Predicted", (10, oh + 25), font, scale, color_text, thickness)
+
+        return combined_img
 
 class MALPseudoLabels(MAL):
 
