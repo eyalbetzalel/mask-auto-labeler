@@ -119,6 +119,7 @@ def parse_args():
     # DAPT
     parser.add_argument('--save_dapt_cp_every_x_epochs', default=1, type=int)
     parser.add_argument("--dapt_cp_path", default="/workspace/mask-auto-labeler/dapt_weights_new_after_crop_fix.ckpt", type=str)
+    parser.add_argument("--mal_cp_path", default="/workspace/mask-auto-labeler/mal_weights.ckpt", type=str)
 
 
     return parser.parse_args()

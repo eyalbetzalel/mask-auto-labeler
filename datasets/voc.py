@@ -120,11 +120,15 @@ class MaskDinoLabels(Dataset):
         - list[dict]: List of dictionaries containing annotations.
         """
 
-        folder_path = '/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels'
+        # folder_path = '/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels'
         
         if self.val_flag:
+            # This is validation set after GT filtering
+            folder_path = '/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels'
             folder_path = folder_path + "/leftImg8bit/val"
         else:
+            # This is training set before GT filtering (MAskDINO Output)
+            folder_path = '/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels_no_gt'
             folder_path = folder_path + "/leftImg8bit/train"
         # List to store all annotations
         annotations = []
@@ -147,17 +151,30 @@ class MaskDinoLabels(Dataset):
                             class_fit = self._is_name_in_cityscapes(coco_id=data['pred_classes'][i])
                             if not size_fit or not class_fit:
                                 continue
-
-                            annotation_dict = {
-                                'segmentation': data['segmentation'][i],
-                                'gt_polygon': data['gt_polygon'][i],
-                                'gt_class': data['gt_classes'][i],
-                                'pred_box': data['pred_boxes'][i],
-                                'pred_class': data['pred_classes'][i],
-                                'score': data['scores'][i],
-                                'json_path': os.path.join(dirpath, filename),
-                                'id': annotation_id
-                            }
+                            
+                            if self.val_flag:
+                                annotation_dict = {
+                                    'segmentation': data['segmentation'][i],
+                                    'gt_polygon': data['gt_polygon'][i],
+                                    'gt_class': data['gt_classes'][i],
+                                    'pred_box': data['pred_boxes'][i],
+                                    'pred_class': data['pred_classes'][i],
+                                    'score': data['scores'][i],
+                                    'json_path': os.path.join(dirpath, filename),
+                                    'id': annotation_id
+                                }
+                            else:
+                                annotation_dict = {
+                                    'segmentation': data['segmentation'][i],
+                                    'gt_polygon': [],
+                                    'gt_class': [],
+                                    'pred_box': data['pred_boxes'][i],
+                                    'pred_class': data['pred_classes'][i],
+                                    'score': data['scores'][i],
+                                    'json_path': os.path.join(dirpath, filename),
+                                    'id': annotation_id
+                                }
+                            
                             annotations.append(annotation_dict)
                             annotation_id += 1
         dataset_len = annotation_id                
@@ -233,8 +250,10 @@ class MaskDinoLabels(Dataset):
 
         # json_path = f'/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels/{file_name}'.replace('.png', '.json')
         
-        
-        img_path = ann_maskdino["json_path"].replace("/maskdino_labels/", "/")
+        if self.val_flag:
+            img_path = ann_maskdino["json_path"].replace("/maskdino_labels/", "/")
+        else:
+            img_path = ann_maskdino["json_path"].replace("/maskdino_labels_no_gt/", "/")
         img_path = os.path.splitext(img_path)[0] + ".png"
         # Prepare to recreate the Instances object
         img = self.get_image(img_path)
@@ -244,12 +263,17 @@ class MaskDinoLabels(Dataset):
         h, w = (1024, 2048)
 
         if len(ann_maskdino["segmentation"]) == 0:
-            dino_mask = np.zeros((h, w, 1))
+            dino_mask = np.zeros((h, w, 1)).astype(np.uint8)
+            gt_mask = np.zeros((h, w, 1)).astype(np.uint8)
         else:
             rle = mask_f.frPyObjects(ann_maskdino["segmentation"], h, w)
             dino_mask = mask_f.decode(rle)
-            gt_rle = mask_f.frPyObjects(ann_maskdino["gt_polygon"], h, w)
-            gt_mask = mask_f.decode(gt_rle)
+            if self.val_flag:
+                gt_rle = mask_f.frPyObjects(ann_maskdino["gt_polygon"], h, w)
+                gt_mask = mask_f.decode(gt_rle)
+            else:
+                gt_mask = np.zeros((h, w, 1)).astype(np.uint8)
+                
         if len(dino_mask.shape) == 3 and dino_mask.shape[2] > 1:
             # Merge channels using OR operation
             dino_mask = np.any(dino_mask, axis=2).astype(np.uint8)

@@ -331,13 +331,25 @@ class RandomCropV3(RandomCropV2):
             gt_mask = np.array(data['gt_mask'][:, :, None]) # (1024, 2048, 1)
             ret_gt_mask = custom_crop_image(gt_mask, extbox, box) # (216, 135, 1)
             
-            # resize depth
+            # resize gt mask
             ret_gt_mask = torch.from_numpy(ret_gt_mask)
             ret_gt_mask = ret_gt_mask.unsqueeze(0).permute(0,3,1,2)
             ret_gt_mask = F.interpolate(ret_gt_mask, size=(self._max_size, self._max_size), mode='bilinear', align_corners=False)
             ret_gt_mask = ret_gt_mask.squeeze().unsqueeze(0)
             # ret_depth = ret_depth.unsqueeze(0).numpy()
             data['gt_mask'] = ret_gt_mask
+
+            # crop dino mask
+            dino_mask = np.array(data['dino_mask'][:, :, None]) # (1024, 2048, 1)
+            ret_dino_mask = custom_crop_image(dino_mask, extbox, box) # (216, 135, 1)
+            
+            # resize dino mask
+            ret_dino_mask = torch.from_numpy(ret_dino_mask)
+            ret_dino_mask = ret_dino_mask.unsqueeze(0).permute(0,3,1,2)
+            ret_dino_mask = F.interpolate(ret_dino_mask, size=(self._max_size, self._max_size), mode='bilinear', align_corners=False)
+            ret_dino_mask = ret_dino_mask.squeeze().unsqueeze(0)
+            # ret_depth = ret_depth.unsqueeze(0).numpy()
+            data['dino_mask'] = ret_dino_mask
 
 
         # crop mask

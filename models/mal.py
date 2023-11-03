@@ -604,9 +604,7 @@ class MAL(pl.LightningModule):
             scaled_gt_mask = F.interpolate(x['gt_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
             
             #resize dino_mask
-            # scaled_dino_mask = F.interpolate(x['dino_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
-            # TODO : Fix this from gt_mask to dinomask:
-            scaled_dino_mask = F.interpolate(x['gt_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            scaled_dino_mask = F.interpolate(x['dino_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
             
             loss_crf, pseudo_label, ious = self.crf_loss(scaled_img, scaled_stu_seg, (scaled_stu_seg + scaled_tea_seg)/2, scaled_gt_mask, scaled_depth, scaled_dino_mask)
             if self.current_epoch > 0:
@@ -634,15 +632,15 @@ class MAL(pl.LightningModule):
         wandb.log({
             "train/loss": total_loss,
             "train/epoch" : self.current_epoch,
-            "train/orig_iou" : orig_iou,
-            "train/rgb_iou" : rgb_iou,
-            "train/depth_iou" : depth_iou
+            # "train/orig_iou" : orig_iou,
+            # "train/rgb_iou" : rgb_iou,
+            # "train/depth_iou" : depth_iou
         })
 
         self.last_output_train = {
             "image" : image,
             "bbox" : x['bbox'],
-            "gt_mask" : x['gt_mask'],
+            "gt_mask" : x['dino_mask'],
             "seg" : (student_seg_sigmoid >= 0.5).float()
         }
     
@@ -665,20 +663,18 @@ class MAL(pl.LightningModule):
         self.local_step = 0
 
         # Sample 5 random images and their corresponding segmentation maps for visualization
-        images, segmentations, sampled_gt_seg = self.sample_images_and_segmentations()
+        images, segmentations, sampled_gt_seg = self.sample_images_and_segmentations(val_flag=False)
         examples = []
         
         for idx, (image, segmentation, gt_seg) in enumerate(zip(images, segmentations, sampled_gt_seg)):
             overlay_image = self.overlay_segmentation_on_image_2(image, gt_seg, segmentation)
             examples.append(wandb.Image(overlay_image, caption=f"Ep. {self.current_epoch + 1} | ID {idx + 1}"))
-        wandb.log({"Images": examples})
+        wandb.log({"Images_train": examples})
         
-        # TODO : Save model weights every args.save_dapt_cp epochs
-        # if (self.current_epoch + 1) % self.args.save_dapt_cp_every_x_epochs == 0:
-        #     checkpoint_name = self.args.dapt_cp_path
-        #     self.trainer.save_checkpoint(checkpoint_name)
 
-    def validation_step(self, x):
+
+    def validation_step(self, batch, batch_idx, return_mask=False):
+        x = batch
         loss = {}
         image = x['image']
 
@@ -891,7 +887,7 @@ class MAL(pl.LightningModule):
                     groups[3].append(value)
         return groups
 
-    def validation_epoch_end(self):
+    def validation_epoch_end(self, validation_step_outputs):
         # Sample 5 random images and their corresponding segmentation maps for visualization
         images, segmentations, sampled_gt_seg = self.sample_images_and_segmentations()
         examples = []
@@ -899,7 +895,12 @@ class MAL(pl.LightningModule):
         for idx, (image, segmentation, gt_seg) in enumerate(zip(images, segmentations, sampled_gt_seg)):
             overlay_image = self.overlay_segmentation_on_image_2(image, gt_seg, segmentation)
             examples.append(wandb.Image(overlay_image, caption=f"Ep. {self.current_epoch + 1} | ID {idx + 1}"))
-        wandb.log({"Images": examples})
+        wandb.log({"Images_val": examples})
+
+        # TODO : Save model weights every args.save_dapt_cp epochs
+        if (self.current_epoch + 1) % self.args.save_dapt_cp_every_x_epochs == 0:
+            checkpoint_name = self.args.mal_cp_path
+            self.trainer.save_checkpoint(checkpoint_name)
 
     def validation_epoch_end_old(self, validation_step_outputs):
         mIoU = self.mIoUMetric.compute()
