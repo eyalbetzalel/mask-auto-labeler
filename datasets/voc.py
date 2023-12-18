@@ -30,6 +30,8 @@ import detectron2
 from models.prismer.experts.generate_depth import model as model_depth
 import torchvision.transforms as transforms
 
+from .sam import sam_get_masks
+
 from detectron2.data.datasets.builtin_meta import COCO_CATEGORIES, CITYSCAPES_CATEGORIES
 
 # # Load depth map from file: 
@@ -299,9 +301,15 @@ class MaskDinoLabels(Dataset):
         depth_map = torch.load(depth_name, map_location=torch.device('cpu'))
         
         ############################################################################################
+
+        # Get SAM mask:
+        sam_mask, _, _ = sam_get_masks(bbox=bbox, path=img_path)
+
+        ############################################################################################
+        
         data = {'image': img, 'mask': mask, 'height': h, 'width': w, 
                 'category_id': ann_maskdino['pred_class'], 'bbox': bbox.astype(float),
-                'id': ann_maskdino['id'], 'depth': depth_map, 'gt_mask': gt_mask, 'dino_mask': dino_mask}
+                'id': ann_maskdino['id'], 'depth': depth_map, 'gt_mask': gt_mask, 'dino_mask': dino_mask, 'sam_mask': sam_mask}
 
         if self.transform is not None:
             data = self.transform(data)

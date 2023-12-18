@@ -50,7 +50,7 @@ def parse_args():
     parser.add_argument('--optim_momentum', default=0.9, type=float)
     # parameters for annealLR + adamW
     # parser.add_argument('--lr', default=0.001, type=float)
-    parser.add_argument('--lr', default=0.0000015, type=float)
+    parser.add_argument('--lr', default=0.000000015, type=float)
     parser.add_argument('--min_lr_rate', default=0.2, type=float)
     # parser.add_argument('--min_lr_rate', default=0, type=float)
     parser.add_argument('--num_wave', default=1, type=float)
@@ -61,7 +61,7 @@ def parse_args():
     
 
     # parameters for sgd
-    parser.add_argument('--max_epochs', default=20, type=int)
+    parser.add_argument('--max_epochs', default=1, type=int)
     parser.add_argument('--save_every_k_epoch', default=1, type=int)
 
     parser.add_argument('--image_size', default=20480, type=int)
@@ -71,7 +71,7 @@ def parse_args():
     parser.add_argument('--mask_thres', default='0.1', type=str)
 
     # multi-node and multi-gpus
-    parser.add_argument('--gpus', default=None, type=str)
+    parser.add_argument('--gpus', default="0", type=str)
     parser.add_argument("--nnodes", default=1, type=int)
 
     # network architecture

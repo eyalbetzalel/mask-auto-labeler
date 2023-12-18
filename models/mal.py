@@ -624,14 +624,19 @@ class MAL(pl.LightningModule):
         for name, param in self.student.named_parameters():
             assert not torch.isnan(param.grad).any()
         optimizer.step()
-        if self._optim_type == 'adamw':
-            self.set_lr_per_iteration(optimizer, 1. * local_step)
+        # if self._optim_type == 'adamw':
+        self.set_lr_per_iteration(optimizer, 1. * local_step)
         self.teacher.update(self.student)        
         orig_iou, rgb_iou, depth_iou = ious
+
+        for i, param_group in enumerate(optimizer.param_groups):
+            current_lr = param_group['lr']
+            wandb.log({f"learning_rate_group_{i}": current_lr})
 
         wandb.log({
             "train/loss": total_loss,
             "train/epoch" : self.current_epoch,
+            # "train/lr" : self._lr,
             # "train/orig_iou" : orig_iou,
             # "train/rgb_iou" : rgb_iou,
             # "train/depth_iou" : depth_iou
@@ -734,12 +739,22 @@ class MAL(pl.LightningModule):
         total_loss = sum(loss.values())        
         orig_iou, rgb_iou, depth_iou = ious
 
+        args = self.args
+
+        crf_zeta = args.crf_zeta
+        crf_kernel_size = args.crf_kernel_size
+        crf_num_iter = args.crf_num_iter
+
+
         wandb.log({
             "val/loss": total_loss,
             "val/epoch" : self.current_epoch,
             "val/orig_iou" : orig_iou,
             "val/rgb_iou" : rgb_iou,
-            "val/depth_iou" : depth_iou
+            "val/depth_iou" : depth_iou, 
+            "val/zeta" : crf_zeta,
+            "val/kernel_size" : crf_kernel_size,
+            "val/num_iter" : crf_num_iter
         })
 
         self.last_output_val = {
@@ -947,6 +962,13 @@ class MAL(pl.LightningModule):
         # This method should return pairs of original images and their segmentation maps 
         # For simplicity, let's assume `self.last_output` is a dictionary 
         # that contains 'image' and 'seg' keys which store batch of images and segmentations
+
+        num_items = last_output['image'].shape[0]
+
+        if num_items < 1:
+            raise ValueError("Cannot take a sample from an empty range.")
+
+        num_samples = min(num_samples, num_items)
 
         indices = random.sample(range(last_output['image'].shape[0]), num_samples)
 

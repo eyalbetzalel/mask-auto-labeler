@@ -4,18 +4,22 @@ import numpy as np
 import cv2 
 import json
 import matplotlib.pyplot as plt
+import torch
+from segment_anything import sam_model_registry, SamPredictor
+from tqdm import tqdm
+
 
 # Import SAM model:
 
-import sys
-sys.path.append("..")
-from segment_anything import sam_model_registry, SamPredictor
-sam_checkpoint = "sam_vit_h_4b8939.pth"
-model_type = "vit_h"
-device = "cuda"
-sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-sam.to(device=device)
-predictor = SamPredictor(sam)
+def setup_sam_model():
+    sam_checkpoint = "sam_vit_h_4b8939.pth"
+    model_type = "vit_h"
+    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+    sam.to(device="cuda:1")
+    predictor = SamPredictor(sam)
+    return predictor
+
+predictor = setup_sam_model()
 
 
 def show_mask(mask, ax, random_color=False):
@@ -55,19 +59,19 @@ def mask_to_polygon(binary_mask):
     
     return polygons
   
-def sam_get_masks(bbox, path, val_flag=False):
+def sam_get_masks(bbox, path):
     
     # Get image : 
      
-    if val_flag:
-        img_path = path.replace("/maskdino_labels/", "/")
-    else:
-        img_path = path.replace("/maskdino_labels_no_gt/", "/")
-    img_path = os.path.splitext(img_path)[0] + ".png"
+    # if val_flag:
+    #     img_path = path.replace("/maskdino_labels/", "/")
+    # else:
+    #     img_path = path.replace("/maskdino_labels_no_gt/", "/")
+    # img_path = os.path.splitext(img_path)[0] + ".png"
 
-    img_path = "/workspace/mask-auto-labeler/data/cityscapes/leftImg8bit/train/aachen/aachen_000000_000019_leftImg8bit.png"
+    #img_path = "/workspace/mask-auto-labeler/data/cityscapes/leftImg8bit/train/aachen/aachen_000000_000019_leftImg8bit.png"
     # Prepare to recreate the Instances object
-    img = cv2.imread(img_path)
+    img = cv2.imread(path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     predictor.set_image(img)
 
@@ -93,7 +97,7 @@ def sam_get_masks(bbox, path, val_flag=False):
         polygon = mask_to_polygon(mask)
         polygons.append(polygon)
     
-    return mask, box, img
+    return polygons
 
 # Update json file with list of polygons:
 
@@ -122,5 +126,56 @@ def mock():
     plt.axis('off')
     plt.savefig('test.png')
 
+def sam_jason():
+        
+        val_flag = False
+
+        if val_flag:
+            # This is validation set after GT filtering
+            folder_path = '/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels'
+            folder_path = folder_path + "/leftImg8bit/val"
+        else:
+            # This is training set before GT filtering (MAskDINO Output)
+            folder_path = '/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels_no_gt'
+            folder_path = folder_path + "/leftImg8bit/train"
+
+
+        # List to store all annotations
+        annotations = []
+        
+        # Running index for annotations across all JSON files
+        annotation_id = 0
+        
+        # Traverse through all JSON files in the folder
+        for dirpath, dirnames, filenames in os.walk(folder_path):
+            for filename in tqdm(filenames, desc="Processing JSON files"):
+                if filename.endswith(".json"):
+                    with open(os.path.join(dirpath, filename), 'r') as f:
+                        data = json.load(f)
+                        bbox = data['pred_boxes']
+                        # bbox is list of lists that contains bounding box coordinates in floating point. change to int:
+                        bbox = np.round(np.array(bbox)).astype(int)
+                        # change bbox to list of lists:
+                        bbox = bbox.tolist()
+                        # Get image path:
+                        
+                        fullpath = os.path.join(dirpath, filename)
+                        if val_flag:
+                            img_path = fullpath.replace("/maskdino_labels/", "/")
+                        else:
+                            img_path = fullpath.replace("/maskdino_labels_no_gt/", "/")
+                        img_path = os.path.splitext(img_path)[0] + ".png"
+
+                        polygons = sam_get_masks(bbox, img_path)
+                        data["sam_seg"] = polygons
+                        v=0
+                    
+                    with open(os.path.join(dirpath, filename), 'w') as f:
+                        json.dump(data, f, indent=4)
+                        v=0
+
+
+
+
 if __name__ == '__main__':
-    mock()
+    sam_jason()
