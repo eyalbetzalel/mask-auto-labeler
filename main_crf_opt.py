@@ -29,7 +29,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # load config
-    parser.add_argument("--val_only", action='store_true', default=False)
+    parser.add_argument("--val_only", action='store_true', default=True)
     parser.add_argument("--box_inputs", type=str, default=None)
     # parser.add_argument("--resume", type=str, default="/workspace/mask-auto-labeler/dapt_weights.ckpt", help='Weight name to be resumed')
     parser.add_argument("--resume", type=str, default=None, help='Weight name to be resumed')
@@ -73,7 +73,7 @@ def parse_args():
     parser.add_argument('--mask_thres', default='0.1', type=str)
 
     # multi-node and multi-gpus
-    parser.add_argument('--gpus', default=None, type=str)
+    parser.add_argument('--gpus', default="1", type=str)
     parser.add_argument("--nnodes", default=1, type=int)
 
     # network architecture

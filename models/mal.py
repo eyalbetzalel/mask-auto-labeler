@@ -120,7 +120,7 @@ class MeanField(nn.Module):
         return iou_scores
 
     @torch.no_grad()
-    def forward(self, feature_map, seg, depth_map, targets=None, weakly_supervised_targets=None):
+    def forward(self, feature_map, seg, depth_map, targets=None, weakly_supervised_targets=None, sam_mask=None):
         
         #################################################################################################################
         orig_image = feature_map.float()
@@ -519,8 +519,8 @@ class MAL(pl.LightningModule):
         optimizer = torch.optim.SGD(self.parameters(), lr=self._lr, momentum=0.9)
         return optimizer 
 
-    def crf_loss(self, img, seg, tseg, gt_mask, depth, dino_mask):
-        refined_mask, ious = self.mean_field(img, tseg, depth, targets=gt_mask, weakly_supervised_targets=dino_mask) 
+    def crf_loss(self, img, seg, tseg, gt_mask, depth, dino_mask, sam_mask):
+        refined_mask, ious = self.mean_field(img, tseg, depth, targets=gt_mask, weakly_supervised_targets=dino_mask, sam_mask=sam_mask) 
         return self.dice_loss(seg, refined_mask).mean(), refined_mask, ious
 
     def dice_loss(self, input, target):
@@ -721,11 +721,12 @@ class MAL(pl.LightningModule):
             scaled_gt_mask = F.interpolate(x['gt_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
             
             #resize dino_mask
-            # scaled_dino_mask = F.interpolate(x['dino_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
-            # TODO : Fix this from gt_mask to dinomask:
-            scaled_dino_mask = F.interpolate(x['gt_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+            scaled_dino_mask = F.interpolate(x['dino_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
             
-            loss_crf, pseudo_label, ious = self.crf_loss(scaled_img, scaled_stu_seg, (scaled_stu_seg + scaled_tea_seg)/2, scaled_gt_mask, scaled_depth, scaled_dino_mask)
+            #resize sam_mask
+            scaled_sam_mask = F.interpolate(x['sam_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
+
+            loss_crf, pseudo_label, ious = self.crf_loss(scaled_img, scaled_stu_seg, (scaled_stu_seg + scaled_tea_seg)/2, scaled_gt_mask, scaled_depth, scaled_dino_mask, scaled_sam_mask)
             if self.current_epoch > 0:
                 step_crf_loss_weight = 1
             else:

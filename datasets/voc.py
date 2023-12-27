@@ -30,7 +30,6 @@ import detectron2
 from models.prismer.experts.generate_depth import model as model_depth
 import torchvision.transforms as transforms
 
-from .sam import sam_get_masks
 
 from detectron2.data.datasets.builtin_meta import COCO_CATEGORIES, CITYSCAPES_CATEGORIES
 
@@ -157,6 +156,7 @@ class MaskDinoLabels(Dataset):
                             if self.val_flag:
                                 annotation_dict = {
                                     'segmentation': data['segmentation'][i],
+                                    'sam_seg' : data['sam_seg'][i],
                                     'gt_polygon': data['gt_polygon'][i],
                                     'gt_class': data['gt_classes'][i],
                                     'pred_box': data['pred_boxes'][i],
@@ -168,6 +168,7 @@ class MaskDinoLabels(Dataset):
                             else:
                                 annotation_dict = {
                                     'segmentation': data['segmentation'][i],
+                                    'sam_seg' : data['sam_seg'][i],
                                     'gt_polygon': [],
                                     'gt_class': [],
                                     'pred_box': data['pred_boxes'][i],
@@ -267,9 +268,13 @@ class MaskDinoLabels(Dataset):
         if len(ann_maskdino["segmentation"]) == 0:
             dino_mask = np.zeros((h, w, 1)).astype(np.uint8)
             gt_mask = np.zeros((h, w, 1)).astype(np.uint8)
+            sam_mask = np.zeros((h, w, 1)).astype(np.uint8)
         else:
             rle = mask_f.frPyObjects(ann_maskdino["segmentation"], h, w)
             dino_mask = mask_f.decode(rle)
+            sam_rle = mask_f.frPyObjects(ann_maskdino["sam_seg"], h, w)
+            sam_mask = mask_f.decode(sam_rle)
+
             if self.val_flag:
                 gt_rle = mask_f.frPyObjects(ann_maskdino["gt_polygon"], h, w)
                 gt_mask = mask_f.decode(gt_rle)
@@ -281,10 +286,12 @@ class MaskDinoLabels(Dataset):
             dino_mask = np.any(dino_mask, axis=2).astype(np.uint8)
         if len(gt_mask.shape) == 3 and gt_mask.shape[2] > 1:
             gt_mask = np.any(gt_mask, axis=2).astype(np.uint8)
-
+        if len(sam_mask.shape) == 3 and sam_mask.shape[2] > 1:
+            sam_mask = np.any(sam_mask, axis=2).astype(np.uint8)
         
         dino_mask = dino_mask.squeeze()
         gt_mask = gt_mask.squeeze()
+        sam_mask = sam_mask.squeeze()
         
         ############################################################
         # box mask
@@ -299,11 +306,6 @@ class MaskDinoLabels(Dataset):
         depth_name = img_path.split("/")[-1].split(".")[0] + ".pt"
         depth_name = os.path.join("/workspace/mask-auto-labeler/data/cityscapes/depth_maps", depth_name)
         depth_map = torch.load(depth_name, map_location=torch.device('cpu'))
-        
-        ############################################################################################
-
-        # Get SAM mask:
-        sam_mask, _, _ = sam_get_masks(bbox=bbox, path=img_path)
 
         ############################################################################################
         

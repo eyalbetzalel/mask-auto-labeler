@@ -128,7 +128,7 @@ def mock():
 
 def sam_jason():
         
-        val_flag = False
+        val_flag = True
 
         if val_flag:
             # This is validation set after GT filtering

@@ -351,6 +351,18 @@ class RandomCropV3(RandomCropV2):
             # ret_depth = ret_depth.unsqueeze(0).numpy()
             data['dino_mask'] = ret_dino_mask
 
+            # crop sam_mask
+            sam_mask = np.array(data['sam_mask'][:, :, None]) # (1024, 2048, 1)
+            ret_sam_mask = custom_crop_image(sam_mask, extbox, box)
+
+            # resize sam mask
+            ret_sam_mask = torch.from_numpy(ret_sam_mask)
+            ret_sam_mask = ret_sam_mask.unsqueeze(0).permute(0,3,1,2)
+            ret_sam_mask = F.interpolate(ret_sam_mask, size=(self._max_size, self._max_size), mode='bilinear', align_corners=False)
+            ret_sam_mask = ret_sam_mask.squeeze().unsqueeze(0)
+            data['sam_mask'] = ret_sam_mask
+
+
 
         # crop mask
         if 'mask' in self._crop_fields:
@@ -542,6 +554,45 @@ class RandomFlip:
                 x['mask'] = x['mask'][:,::-1]
                 x['depth'] = torch.flip(x['depth'], [2])
                 x['gt_mask'] = torch.flip(x['gt_mask'], [2])
+                x['sam_mask'] = torch.flip(x['sam_mask'], [2])
+                x['dino_mask'] = torch.flip(x['dino_mask'], [2])
+                v=0
+                # Visualize all the flipped images and save them in a folder as different png files:
+                img = x['image']
+                mask = x['mask']
+                depth = x['depth']
+                gt_mask = x['gt_mask']
+                sam_mask = x['sam_mask']
+                dino_mask = x['dino_mask']
+                img = np.asarray(img)
+                # img = img.transpose(2, 0, 1)
+                depth = depth.squeeze()
+                depth = depth.numpy()
+                gt_mask = gt_mask.squeeze()
+                gt_mask = gt_mask.numpy()
+                sam_mask = sam_mask.squeeze()
+                sam_mask = sam_mask.numpy()
+                dino_mask = dino_mask.squeeze()
+                dino_mask = dino_mask.numpy()
+                img = img.astype(np.uint8)
+                mask = mask.astype(np.uint8) * 255
+                depth = depth.astype(np.uint8)
+                gt_mask = gt_mask.astype(np.uint8) * 255
+                sam_mask = sam_mask.astype(np.uint8) * 255
+                dino_mask = dino_mask.astype(np.uint8) * 255
+                img = Image.fromarray(img, mode='RGB')
+                mask = Image.fromarray(mask, mode='L')
+                depth = Image.fromarray(depth, mode='L')
+                gt_mask = Image.fromarray(gt_mask, mode='L')
+                sam_mask = Image.fromarray(sam_mask, mode='L')
+                dino_mask = Image.fromarray(dino_mask, mode='L')
+                img.save('flipped_img.png')
+                mask.save('flipped_mask.png')
+                depth.save('flipped_depth.png')
+                gt_mask.save('flipped_gt_mask.png')
+                sam_mask.save('flipped_sam_mask.png')
+                dino_mask.save('flipped_dino_mask.png')
+
             else:
                 x['flip_records'] = 0
         else:
