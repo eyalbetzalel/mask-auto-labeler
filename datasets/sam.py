@@ -61,7 +61,9 @@ def mask_to_polygon(binary_mask):
   
 def sam_get_masks(bbox, path):
     
-    # Get image : 
+    # val_flag = False
+
+    # # Get image : 
      
     # if val_flag:
     #     img_path = path.replace("/maskdino_labels/", "/")
@@ -100,31 +102,6 @@ def sam_get_masks(bbox, path):
     return polygons
 
 # Update json file with list of polygons:
-
-
-def mock():
-    path = "/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels/leftImg8bit/train/aachen/aachen_000000_000019_leftImg8bit.json"
-    with open(path, 'r') as f:
-        data = json.load(f)
-    bbox = data['pred_boxes']
-    val_flag = False
-
-    plt.figure(figsize=(10, 10))
-    
-    firstVisible = True
-    # mask, box, img = sam_get_masks(bbox, path, val_flag)
-    # Iterate over all bounding boxes
-    for single_box in bbox:
-        mask, box, img = sam_get_masks([single_box], path, val_flag)  # Process one box at a time
-        if firstVisible:
-            firstVisible = False
-            plt.imshow(img)
-        show_mask(mask, plt.gca())
-        show_box(box, plt.gca())
-    
-
-    plt.axis('off')
-    plt.savefig('test.png')
 
 def sam_jason():
         

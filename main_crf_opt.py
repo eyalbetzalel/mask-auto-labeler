@@ -99,9 +99,10 @@ def parse_args():
     # crf option
     parser.add_argument('--crf_zeta_list', nargs='+' , default=[0.1, 0.2, 0.3], type=float)
     parser.add_argument('--crf_omega_list', nargs='+' , default=[2, 3, 4], type=float)
-    parser.add_argument('--crf_kernel_size_list', nargs='+' , default=[3, 5, 7], type=int)
-    parser.add_argument('--crf_num_iter_list', nargs='+' , default=[50, 100, 1000], type=int)
-    
+    parser.add_argument('--crf_kernel_size_list', nargs='+' , default=[1, 2, 3, 4, 5], type=int)
+    parser.add_argument('--crf_num_iter_list', nargs='+' , default=[10, 20, 30, 40, 50, 100], type=int)
+    parser.add_argument('--crf_with_sam', nargs='+' , default=[True, False], type=bool)
+
     #parser.add_argument('--crf_zeta', default=0.1, type=float)
     #parser.add_argument('--crf_omega', default=2, type=float)
     #parser.add_argument('--crf_kernel_size', default=3, type=float)
@@ -134,23 +135,6 @@ def parse_args():
 
 # start a new wandb run to track this script
 import wandb
-
-wandb.init(
-    # set the wandb project where this run will be logged
-    project="DAPT_CityScapes",
-    
-    # track hyperparameters and run metadata
-    config={
-    "learning_rate": 0,
-    "architecture": "DAPT",
-    "dataset": "CityScapes",
-    "epochs": 20,
-    "batch_size": 8,
-    "optimizer": "AdamW",
-    },
-    
-    # mode="disabled"
-)
 
 if __name__ == '__main__':
 
@@ -209,13 +193,31 @@ if __name__ == '__main__':
 
     # crf hyperparameter grid search:
 
-    for crf_zeta, crf_omega, crf_kernel_size, crf_num_iter in itertools.product(args.crf_zeta_list, args.crf_omega_list, args.crf_kernel_size_list, args.crf_num_iter_list):
-        print(f"Training with crf_zeta={crf_zeta}, crf_omega={crf_omega}, crf_kernel_size={crf_kernel_size}, crf_num_iter={crf_num_iter}")
+    for crf_zeta, crf_omega, crf_kernel_size, crf_num_iter, crf_with_sam in itertools.product(args.crf_zeta_list, args.crf_omega_list, args.crf_kernel_size_list, args.crf_num_iter_list, args.crf_with_sam):
+        print(f"Training with crf_zeta={crf_zeta}, crf_omega={crf_omega}, crf_kernel_size={crf_kernel_size}, crf_num_iter={crf_num_iter}, crf_with_sam={crf_with_sam}")
 
         args.crf_zeta = crf_zeta
         args.crf_omega = crf_omega
         args.crf_kernel_size = crf_kernel_size
         args.crf_num_iter = crf_num_iter
+        args.crf_with_sam = crf_with_sam
+        run_name = f"zeta={crf_zeta}_omega={crf_omega}_kernel_size={crf_kernel_size}_num_iter={crf_num_iter}_with_sam={crf_with_sam}"
+        wandb.init(
+            # set the wandb project where this run will be logged
+            project="DAPT_CityScapes",
+            name=run_name,
+            
+            # track hyperparameters and run metadata
+            config={
+                "crf_zeta": args.crf_zeta,
+                "crf_omega": args.crf_omega,
+                "crf_kernel_size": args.crf_kernel_size,
+                "crf_num_iter": args.crf_num_iter,
+                "crf_with_sam": args.crf_with_sam,
+            },
+            
+            # mode="disabled"
+        )
 
         if args.label_dump_path is not None:
             # Phase 2: Generating pseudo-labels

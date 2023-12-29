@@ -61,6 +61,7 @@ class MeanField(nn.Module):
         assert self.kernel_size % 2 == 1
         self.zeta = args.crf_zeta
         self.num_iter = args.crf_num_iter
+        self.with_sam = args.crf_with_sam
         self.high_thres = args.crf_value_high_thres
         self.low_thres = args.crf_value_low_thres
         self.args = args
@@ -156,7 +157,10 @@ class MeanField(nn.Module):
         #     seg = seg * t
         # else:
         #     t = None
-        t = None
+        if self.with_sam:
+            t = sam_mask
+        else:
+            t = None
         seg = self.trunc(seg)
 
         for it in range(self.num_iter):
@@ -731,6 +735,9 @@ class MAL(pl.LightningModule):
                 step_crf_loss_weight = 1
             else:
                 step_crf_loss_weight = min(1. * local_step / self.loss_crf_step, 1.)
+            
+            # TODO : Change it after finish CRF research :
+            step_crf_loss_weight = 1
             loss_crf *= self.loss_crf_weight * step_crf_loss_weight
             loss.update({'crf': loss_crf})
             
@@ -745,7 +752,7 @@ class MAL(pl.LightningModule):
         crf_zeta = args.crf_zeta
         crf_kernel_size = args.crf_kernel_size
         crf_num_iter = args.crf_num_iter
-
+        crf_with_sam = args.crf_with_sam
 
         wandb.log({
             "val/loss": total_loss,
@@ -755,7 +762,8 @@ class MAL(pl.LightningModule):
             "val/depth_iou" : depth_iou, 
             "val/zeta" : crf_zeta,
             "val/kernel_size" : crf_kernel_size,
-            "val/num_iter" : crf_num_iter
+            "val/num_iter" : crf_num_iter,
+            "val/with_sam" : crf_with_sam
         })
 
         self.last_output_val = {
