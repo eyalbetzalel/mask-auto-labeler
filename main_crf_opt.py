@@ -99,7 +99,7 @@ def parse_args():
     # crf option
     parser.add_argument('--crf_zeta_list', nargs='+' , default=[0.1, 0.2, 0.3], type=float)
     parser.add_argument('--crf_omega_list', nargs='+' , default=[2, 3, 4], type=float)
-    parser.add_argument('--crf_kernel_size_list', nargs='+' , default=[1, 2, 3, 4, 5], type=int)
+    parser.add_argument('--crf_kernel_size_list', nargs='+' , default=[1, 3, 5, 7], type=int)
     parser.add_argument('--crf_num_iter_list', nargs='+' , default=[10, 20, 30, 40, 50, 100], type=int)
     parser.add_argument('--crf_with_sam', nargs='+' , default=[True, False], type=bool)
 
@@ -260,3 +260,4 @@ if __name__ == '__main__':
                 trainer.fit(model, data_loader)
             else:
                 trainer.validate(model, ckpt_path=args.resume, dataloaders=data_loader.val_dataloader())
+        wandb.finish()
