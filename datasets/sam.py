@@ -7,6 +7,66 @@ import matplotlib.pyplot as plt
 import torch
 from segment_anything import sam_model_registry, SamPredictor
 from tqdm import tqdm
+from torch.nn import functional as F
+
+
+
+def calculate_distances(feature_tensor, pixel_coord, distance_method='euclidean'):
+    """
+    Calculate the distances between the feature vector at the specified pixel coordinate
+    and all other feature vectors in the tensor.
+
+    Args:
+    - feature_tensor (numpy.ndarray): The feature tensor with shape [32, 1024, 2048].
+    - pixel_coord (tuple): The (X, Y) coordinate of the pixel.
+    - distance_method (str): The method used to calculate distances ('euclidean', 'manhattan', etc.)
+
+    Returns:
+    - numpy.ndarray: An array of distances with shape [1024, 2048].
+    """
+    if distance_method == 'euclidean':
+        distance_func = lambda a, b: np.sqrt(np.sum((a - b) ** 2))
+    elif distance_method == 'manhattan':
+        distance_func = lambda a, b: np.sum(np.abs(a - b))
+    else:
+        raise ValueError("Unsupported distance method")
+
+    x, y = pixel_coord
+    target_vector = feature_tensor[:, x, y]
+
+    distances = np.zeros((feature_tensor.shape[1], feature_tensor.shape[2]))
+
+    for i in range(feature_tensor.shape[1]):
+        for j in range(feature_tensor.shape[2]):
+            distances[i, j] = distance_func(target_vector, feature_tensor[:, i, j])
+
+    return distances
+
+def visualize_distances(image_path, distances, pixel_coord, output_path):
+    """
+    Visualize the distances as a heatmap overlaid on the original image and save the result.
+
+    Args:
+    - image_path (str): The path to the image file.
+    - distances (numpy.ndarray): The distances array with shape [1024, 2048].
+    - pixel_coord (tuple): The (X, Y) coordinate of the pixel.
+    - output_path (str): The path to save the output image.
+    """
+    # Load the image
+    image = Image.open(image_path)
+    plt.imshow(image, extent=[0, distances.shape[1], distances.shape[0], 0])
+
+    # Overlay the heatmap
+    plt.imshow(distances, cmap='hot', alpha=0.5, extent=[0, distances.shape[1], distances.shape[0], 0])
+
+    # Mark the input pixel coordinate
+    plt.scatter(*pixel_coord, color='blue', s=50)
+
+    # Save the result
+    plt.axis('off')
+    plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
+    plt.close()
+
 
 
 # Import SAM model:
@@ -79,7 +139,23 @@ def sam_get_masks(bbox, path):
 
     polygons = []
 
+    #################################################################################################
+    # image embedding :
+    img_embedding = predictor.get_image_embedding()
+    img_embedding = F.interpolate(
+        img_embedding,
+        (1024, 1024),
+        mode="bilinear",
+        align_corners=False,
+    )
+    img_embedding = img_embedding[..., : 512, : 1024]
+    img_embedding = F.interpolate(img_embedding, (1024, 2048), mode="bilinear", align_corners=False)
+    img_embedding = img_embedding.squeeze().cpu().numpy()
+    #################################################################################################
+
     # loop predicted bounding boxes:
+    
+    mask = None
 
     for box in bbox:
 
@@ -99,7 +175,7 @@ def sam_get_masks(bbox, path):
         polygon = mask_to_polygon(mask)
         polygons.append(polygon)
     
-    return polygons, mask, features
+    return polygons, mask, features, img_embedding
 
 # Update json file with list of polygons:
 
@@ -177,7 +253,7 @@ def sam_heatmap():
                 if filename.endswith(".json"):
                     with open(os.path.join(dirpath, filename), 'r') as f:
                         annotation_id += 1
-                        if annotation_id <= 1:
+                        if annotation_id <= 40:
                             continue
                         data = json.load(f)
                         bbox = data['pred_boxes']
@@ -193,71 +269,28 @@ def sam_heatmap():
                         else:
                             img_path = fullpath.replace("/maskdino_labels_no_gt/", "/")
                         img_path = os.path.splitext(img_path)[0] + ".png"
+                        
+                        if len(bbox) == 0:
+                            continue
 
-                        polygons, mask, features = sam_get_masks(bbox, img_path)
-                        return features, img_path
+                        polygons, mask, features, img_embedding = sam_get_masks(bbox, img_path)
+
+                        # Example usage
+                        pixel_coord = (512, 512)  # Replace with actual pixel coordinate
+                        output_path = f'sam_output_with_bbox_prompt_{annotation_id}.png'  # Replace with the desired output path
+                        distances = calculate_distances(features, pixel_coord)
+                        visualize_distances(img_path, distances, pixel_coord, output_path)
+
+                        output_path = f'sam_output_img_emb_{annotation_id}.png'  # Replace with the desired output path
+                        distances = calculate_distances(img_embedding, pixel_coord)
+                        visualize_distances(img_path, distances, pixel_coord, output_path)
+                        v=0
 
 
-import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image
-import os
 
-def calculate_distances(feature_tensor, pixel_coord, distance_method='euclidean'):
-    """
-    Calculate the distances between the feature vector at the specified pixel coordinate
-    and all other feature vectors in the tensor.
+                        
 
-    Args:
-    - feature_tensor (numpy.ndarray): The feature tensor with shape [32, 1024, 2048].
-    - pixel_coord (tuple): The (X, Y) coordinate of the pixel.
-    - distance_method (str): The method used to calculate distances ('euclidean', 'manhattan', etc.)
 
-    Returns:
-    - numpy.ndarray: An array of distances with shape [1024, 2048].
-    """
-    if distance_method == 'euclidean':
-        distance_func = lambda a, b: np.sqrt(np.sum((a - b) ** 2))
-    elif distance_method == 'manhattan':
-        distance_func = lambda a, b: np.sum(np.abs(a - b))
-    else:
-        raise ValueError("Unsupported distance method")
-
-    x, y = pixel_coord
-    target_vector = feature_tensor[:, x, y]
-
-    distances = np.zeros((feature_tensor.shape[1], feature_tensor.shape[2]))
-
-    for i in range(feature_tensor.shape[1]):
-        for j in range(feature_tensor.shape[2]):
-            distances[i, j] = distance_func(target_vector, feature_tensor[:, i, j])
-
-    return distances
-
-def visualize_distances(image_path, distances, pixel_coord, output_path):
-    """
-    Visualize the distances as a heatmap overlaid on the original image and save the result.
-
-    Args:
-    - image_path (str): The path to the image file.
-    - distances (numpy.ndarray): The distances array with shape [1024, 2048].
-    - pixel_coord (tuple): The (X, Y) coordinate of the pixel.
-    - output_path (str): The path to save the output image.
-    """
-    # Load the image
-    image = Image.open(image_path)
-    plt.imshow(image, extent=[0, distances.shape[1], distances.shape[0], 0])
-
-    # Overlay the heatmap
-    plt.imshow(distances, cmap='hot', alpha=0.5, extent=[0, distances.shape[1], distances.shape[0], 0])
-
-    # Mark the input pixel coordinate
-    plt.scatter(*pixel_coord, color='blue', s=50)
-
-    # Save the result
-    plt.axis('off')
-    plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
-    plt.close()
 
 
 
@@ -266,11 +299,5 @@ def visualize_distances(image_path, distances, pixel_coord, output_path):
 
 
 if __name__ == '__main__':
-    features, image_path = sam_heatmap()
+    sam_heatmap()
 
-    # Example usage
-    pixel_coord = (512, 512)  # Replace with actual pixel coordinate
-    output_path = 'sam_output.png'  # Replace with the desired output path
-
-    distances = calculate_distances(features, pixel_coord)
-    visualize_distances(image_path, distances, pixel_coord, output_path)
