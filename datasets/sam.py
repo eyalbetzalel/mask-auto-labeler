@@ -42,6 +42,81 @@ def calculate_distances(feature_tensor, pixel_coord, distance_method='euclidean'
 
     return distances
 
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+
+def random_color():
+    return random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)
+
+def process_image(image_path, bbox_mask_list, annotation_id):
+    # Load the image
+    image = cv2.imread(image_path)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # Number of sub-figures
+    num_sub_figures = len(bbox_mask_list)
+
+    # Create a figure with subplots
+    fig, axs = plt.subplots(3, 3, figsize=(20, 20))
+
+    for i, (mask, bbox) in enumerate(bbox_mask_list):
+        # Create a copy of the image for each sub-figure
+        img_copy = image.copy()
+
+        # Generate a random color
+        color = random_color()
+
+        # Draw the bbox
+        cv2.rectangle(img_copy, (bbox[0], bbox[1]), (bbox[2], bbox[3]), color, 2)
+
+        # Create a mask overlay
+        overlay = img_copy.copy()
+        overlay[mask == 1] = color
+
+        # Combine image and overlay
+        cv2.addWeighted(overlay, 0.5, img_copy, 0.5, 0, img_copy)
+
+        # Show the image in subplot
+        if num_sub_figures == 1:
+            axs.imshow(img_copy)
+        else:
+            if i == 0:
+                axs[0, 0].imshow(img_copy)
+                axs[0, 0].axis('off')
+            elif i == 1:
+                axs[0, 1].imshow(img_copy)
+                axs[0, 1].axis('off')
+            elif i == 2:
+                axs[0, 2].imshow(img_copy)
+                axs[0, 2].axis('off')
+            elif i == 3:
+                axs[1, 0].imshow(img_copy)
+                axs[1, 0].axis('off')
+            elif i == 4:
+                axs[1, 1].imshow(img_copy)
+                axs[1, 1].axis('off')
+            elif i == 5:
+                axs[1, 2].imshow(img_copy)
+                axs[1, 2].axis('off')
+            elif i == 6:
+                axs[2, 0].imshow(img_copy)
+                axs[2, 0].axis('off')
+            elif i == 7:
+                axs[2, 1].imshow(img_copy)
+                axs[2, 1].axis('off')
+            elif i == 8:
+                axs[2, 2].imshow(img_copy)
+                axs[2, 2].axis('off')
+            else:
+                v=0
+                 
+
+    # Save the figure
+    plt.savefig(f'output_figure_{annotation_id}.png', bbox_inches='tight')
+    plt.close()
+
 def visualize_distances(image_path, distances, pixel_coord, output_path):
     """
     Visualize the distances as a heatmap overlaid on the original image and save the result.
@@ -66,8 +141,6 @@ def visualize_distances(image_path, distances, pixel_coord, output_path):
     plt.axis('off')
     plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
     plt.close()
-
-
 
 # Import SAM model:
 
@@ -178,6 +251,85 @@ def sam_get_masks(bbox, path):
     return polygons, mask, features, img_embedding
 
 # Update json file with list of polygons:
+def sam_prem_bb():
+        
+        val_flag = True
+
+        if val_flag:
+            # This is validation set after GT filtering
+            folder_path = '/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels'
+            folder_path = folder_path + "/leftImg8bit/val"
+        else:
+            # This is training set before GT filtering (MAskDINO Output)
+            folder_path = '/workspace/mask-auto-labeler/data/cityscapes/maskdino_labels_no_gt'
+            folder_path = folder_path + "/leftImg8bit/train"
+
+
+        # List to store all annotations
+        annotations = []
+        
+        # Running index for annotations across all JSON files
+        annotation_id = 0
+        
+        # Traverse through all JSON files in the folder
+        for dirpath, dirnames, filenames in os.walk(folder_path):
+            for filename in tqdm(filenames, desc="Processing JSON files"):
+                if filename.endswith(".json"):
+                    annotation_id += 1
+                    with open(os.path.join(dirpath, filename), 'r') as f:
+                        data = json.load(f)
+                        bbox = data['pred_boxes']
+                        # bbox is list of lists that contains bounding box coordinates in floating point. change to int:
+                        bbox = np.round(np.array(bbox)).astype(int)
+                        # change bbox to list of lists:
+                        bbox = bbox.tolist()
+                        # Get image path:
+                        
+                        fullpath = os.path.join(dirpath, filename)
+                        if val_flag:
+                            img_path = fullpath.replace("/maskdino_labels/", "/")
+                        else:
+                            img_path = fullpath.replace("/maskdino_labels_no_gt/", "/")
+                        img_path = os.path.splitext(img_path)[0] + ".png"
+
+                        num_of_permutations = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+                        perm_list = []
+                        if len(bbox) == 0:
+                            continue
+                        if all(isinstance(i, list) for i in bbox):
+                            bbox = bbox[0]
+                        for i in num_of_permutations:
+                            
+                            # permute bbox: keep the original bbox but add random noise to it that is proportional to the size of the bbox:
+                            
+                            # calc bbox width and hight size:
+                            w = bbox[2] - bbox[0]
+                            h = bbox[3] - bbox[1]
+                            perm_size = int(np.round(np.min([w, h])/10))
+                            if perm_size == 0:
+                                perm_size = 1
+
+                            
+                            bbox_permuted = bbox.copy()
+                            bbox_permuted = np.array(bbox_permuted)
+
+                            bbox_permuted = bbox_permuted + np.random.randint(-perm_size, perm_size, size=bbox_permuted.shape)
+                            
+                            # get mask for each bounding box
+                            polygons, mask, features, img_embedding = sam_get_masks([bbox_permuted.tolist()], img_path)
+
+                            # add to masks and bbox to list of results
+                            perm_list.append([mask, bbox_permuted])
+
+                        process_image(img_path, perm_list, annotation_id)
+                        if annotation_id >100:
+                            v=0
+
+                        # visualize results
+                        # polygons = sam_get_masks(bbox, img_path)
+
+
+
 
 def sam_jason():
         
@@ -287,17 +439,6 @@ def sam_heatmap():
                         v=0
 
 
-
-                        
-
-
-
-
-
-                    
-
-
-
 if __name__ == '__main__':
-    sam_heatmap()
+    sam_prem_bb()
 

@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument('--dataset_type', default='maskdino', type=str, choices=datapath_configs.keys())
 
     # Hyperparameter
-    parser.add_argument('--batch_size', default=8, type=int)
+    parser.add_argument('--batch_size', default=1, type=int)
     parser.add_argument('--accum_grad_batches', default=1, type=int)
     parser.add_argument('--min_obj_size', default=2048, type=int)
     parser.add_argument('--max_obj_size', default=1e10, type=int)
@@ -97,11 +97,11 @@ def parse_args():
     parser.add_argument('--loss_crf_weight', default=10, type=float)
 
     # crf option
-    parser.add_argument('--crf_zeta_list', nargs='+' , default=[0.1, 0.2, 0.3], type=float)
-    parser.add_argument('--crf_omega_list', nargs='+' , default=[2, 3, 4], type=float)
-    parser.add_argument('--crf_kernel_size_list', nargs='+' , default=[1, 3, 5, 7], type=int)
-    parser.add_argument('--crf_num_iter_list', nargs='+' , default=[10, 20, 30, 40, 50, 100], type=int)
-    parser.add_argument('--crf_with_sam', nargs='+' , default=[True, False], type=bool)
+    parser.add_argument('--crf_zeta_list', nargs='+' , default=[0.3], type=float)
+    parser.add_argument('--crf_omega_list', nargs='+' , default=[4], type=float)
+    parser.add_argument('--crf_kernel_size_list', nargs='+' , default=[3], type=int)
+    parser.add_argument('--crf_num_iter_list', nargs='+' , default=[10], type=int)
+    parser.add_argument('--crf_with_sam', nargs='+' , default=[True], type=bool)
 
     #parser.add_argument('--crf_zeta', default=0.1, type=float)
     #parser.add_argument('--crf_omega', default=2, type=float)

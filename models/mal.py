@@ -186,7 +186,8 @@ class MeanField(nn.Module):
         orig_iou = self.calculate_iou(targets, orig_mask)
         rgb_iou = self.calculate_iou(targets, rgb_mask)
         depth_iou = self.calculate_iou(targets, mask_rgb_depth)
-        batch_ious = (np.mean(orig_iou.cpu().numpy()), np.mean(rgb_iou.cpu().numpy()), np.mean(depth_iou.cpu().numpy()))
+        sam_iou = self.calculate_iou(targets, sam_mask)
+        batch_ious = (np.mean(orig_iou.cpu().numpy()), np.mean(rgb_iou.cpu().numpy()), np.mean(depth_iou.cpu().numpy()), np.mean(sam_iou.cpu().numpy()))
 
         # # Calculate the difference between rgb_iou and orig_iou in percentage terms
         # iou_difference = (rgb_iou - orig_iou) 
@@ -745,7 +746,7 @@ class MAL(pl.LightningModule):
             raise NotImplementedError
 
         total_loss = sum(loss.values())        
-        orig_iou, rgb_iou, depth_iou = ious
+        orig_iou, rgb_iou, depth_iou, sam_iou = ious
 
         args = self.args
 
@@ -759,7 +760,8 @@ class MAL(pl.LightningModule):
             "val/epoch" : self.current_epoch,
             "val/orig_iou" : orig_iou,
             "val/rgb_iou" : rgb_iou,
-            "val/depth_iou" : depth_iou, 
+            "val/depth_iou" : depth_iou,
+            "val/sam_iou" : sam_iou, 
             "val/zeta" : crf_zeta,
             "val/kernel_size" : crf_kernel_size,
             "val/num_iter" : crf_num_iter,
