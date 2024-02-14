@@ -53,6 +53,16 @@ from torchvision.utils import make_grid
 import random
 import matplotlib.pyplot as plt
 
+from segment_anything import sam_model_registry, SamPredictor
+
+def setup_sam_model():
+    sam_checkpoint = "sam_vit_h_4b8939.pth"
+    model_type = "vit_h"
+    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+    sam.to(device="cuda:1")
+    predictor = SamPredictor(sam)
+    return predictor
+
 class MeanField(nn.Module):
 
     def __init__(self, args=None):
@@ -121,7 +131,7 @@ class MeanField(nn.Module):
         return iou_scores
 
     @torch.no_grad()
-    def forward(self, feature_map, seg, depth_map, targets=None, weakly_supervised_targets=None, sam_mask=None):
+    def forward(self, feature_map, seg, depth_map, targets=None, weakly_supervised_targets=None, sam_mask=None, sam_unary=None, sam_binary=None):
         
         #################################################################################################################
         orig_image = feature_map.float()
@@ -453,7 +463,6 @@ class MIoUMetrics(torchmetrics.Metric):
         return mIoU
 
 
-
 class MAL(pl.LightningModule):
     
     def __init__(self, args=None, num_iter_per_epoch=None):
@@ -517,6 +526,48 @@ class MAL(pl.LightningModule):
         # Enable manual optimization
         self.automatic_optimization = False
 
+        self.sam_predictor = setup_sam_model()
+
+    def get_sam_features(self, x, box):
+
+        # TODO : Fix for batch_size > 1.
+
+        normalized_x = (x - x.min()) / (x.max() - x.min())
+        normalized_x = normalized_x.squeeze(0).permute(1, 2, 0).cpu().numpy()
+        normalized_x = (normalized_x * 255).astype('uint8')
+        self.sam_predictor.set_image(normalized_x)
+
+        #################################################################################################
+        # get binary features:
+        # image embedding :
+        img_embedding = self.sam_predictor.get_image_embedding()
+        img_embedding = F.interpolate(
+            img_embedding,
+            (512, 512),
+            mode="bilinear",
+            align_corners=False,
+        )
+        img_embedding = img_embedding[..., : 512, : 512]
+        img_embedding = F.interpolate(img_embedding, (512, 512), mode="bilinear", align_corners=False)
+        img_embedding = img_embedding.squeeze().cpu().numpy()
+
+        # convert image embedding to torch tensor:
+        img_embedding = torch.tensor(img_embedding).unsqueeze(0).to('cuda:1')
+
+        #################################################################################################
+        # get unary features:
+        box = box.cpu().numpy().astype('uint')
+        _ , _, _, unary_features = self.sam_predictor.predict(
+        point_coords=None,
+        point_labels=None,
+        box=box[None, :],
+        multimask_output=False,)
+
+        # convert unary_features to torch tensor:
+        unary_features = torch.tensor(unary_features).unsqueeze(0).to('cuda:1')
+        
+        return img_embedding, unary_features
+
     def configure_optimizers(self):
         # optimizer = AdamWwStep(self.parameters(), eps=self.args.optim_eps, 
         #                         betas=self.args.optim_betas,
@@ -524,8 +575,8 @@ class MAL(pl.LightningModule):
         optimizer = torch.optim.SGD(self.parameters(), lr=self._lr, momentum=0.9)
         return optimizer 
 
-    def crf_loss(self, img, seg, tseg, gt_mask, depth, dino_mask, sam_mask):
-        refined_mask, ious = self.mean_field(img, tseg, depth, targets=gt_mask, weakly_supervised_targets=dino_mask, sam_mask=sam_mask) 
+    def crf_loss(self, img, seg, tseg, gt_mask, depth, dino_mask, sam_mask, sam_unary, sam_binary):
+        refined_mask, ious = self.mean_field(img, tseg, depth, targets=gt_mask, weakly_supervised_targets=dino_mask, sam_mask=sam_mask, sam_unary=sam_unary, sam_binary=sam_binary) 
         return self.dice_loss(seg, refined_mask).mean(), refined_mask, ious
 
     def dice_loss(self, input, target):
@@ -681,12 +732,12 @@ class MAL(pl.LightningModule):
             examples.append(wandb.Image(overlay_image, caption=f"Ep. {self.current_epoch + 1} | ID {idx + 1}"))
         wandb.log({"Images_train": examples})
         
-
-
     def validation_step(self, batch, batch_idx, return_mask=False):
         x = batch
         loss = {}
         image = x['image']
+
+        binary_features, unary_features = self.get_sam_features(x['image'], x['bbox'])
 
         local_step = self.local_step
         self.local_step += 1
@@ -731,7 +782,24 @@ class MAL(pl.LightningModule):
             #resize sam_mask
             scaled_sam_mask = F.interpolate(x['sam_mask'], size=(th, tw), mode='bilinear', align_corners=False).reshape(B, th, tw)
 
-            loss_crf, pseudo_label, ious = self.crf_loss(scaled_img, scaled_stu_seg, (scaled_stu_seg + scaled_tea_seg)/2, scaled_gt_mask, scaled_depth, scaled_dino_mask, scaled_sam_mask)
+            #resize unary_features
+            scaled_unary_features = F.interpolate(unary_features, size=(th, tw), mode='bilinear', align_corners=False).reshape(B, -1, th, tw)
+
+            #resize binary_features
+            scaled_binary_features = F.interpolate(binary_features, size=(th, tw), mode='bilinear', align_corners=False).reshape(B, -1, th, tw)
+
+
+            loss_crf, pseudo_label, ious = self.crf_loss(
+                scaled_img, 
+                scaled_stu_seg, 
+                (scaled_stu_seg + scaled_tea_seg)/2, 
+                scaled_gt_mask, 
+                scaled_depth, 
+                scaled_dino_mask, 
+                scaled_sam_mask,
+                scaled_unary_features,
+                scaled_binary_features)
+
             if self.current_epoch > 0:
                 step_crf_loss_weight = 1
             else:

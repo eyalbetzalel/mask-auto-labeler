@@ -10,7 +10,35 @@ from tqdm import tqdm
 from torch.nn import functional as F
 
 
+def get_sam_features(x):
 
+    normalized_x = (x - x.min()) / (x.max() - x.min()) * 255
+    predictor.set_image(normalized_x)
+
+    #################################################################################################
+    # get binary features:
+    # image embedding :
+    img_embedding = predictor.get_image_embedding()
+    img_embedding = F.interpolate(
+        img_embedding,
+        (1024, 1024),
+        mode="bilinear",
+        align_corners=False,
+    )
+    img_embedding = img_embedding[..., : 512, : 1024]
+    img_embedding = F.interpolate(img_embedding, (1024, 2048), mode="bilinear", align_corners=False)
+    img_embedding = img_embedding.squeeze().cpu().numpy()
+    #################################################################################################
+    # get unary features:
+    
+    _ , _, _, unary_features = predictor.predict(
+    point_coords=None,
+    point_labels=None,
+    box=box[None, :],
+    multimask_output=False,)
+    
+    return img_embedding, unary_features
+    
 def calculate_distances(feature_tensor, pixel_coord, distance_method='euclidean'):
     """
     Calculate the distances between the feature vector at the specified pixel coordinate
@@ -46,6 +74,25 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import random
+
+def find_largest_bbox(bboxes):
+    """
+    Find the index of the largest bounding box.
+    
+    :param bboxes: List of bounding boxes in the format [x0, y0, x1, y1]
+    :return: Index of the largest bounding box
+    """
+    max_area = 0
+    max_index = -1
+
+    for i, bbox in enumerate(bboxes):
+        x0, y0, x1, y1 = bbox
+        area = (x1 - x0) * (y1 - y0)
+        if area > max_area:
+            max_area = area
+            max_index = i
+
+    return max_index
 
 def random_color():
     return random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)
@@ -297,7 +344,8 @@ def sam_prem_bb():
                         if len(bbox) == 0:
                             continue
                         if all(isinstance(i, list) for i in bbox):
-                            bbox = bbox[0]
+                            ind = find_largest_bbox(bbox)
+                            bbox = bbox[ind]
                         for i in num_of_permutations:
                             
                             # permute bbox: keep the original bbox but add random noise to it that is proportional to the size of the bbox:
@@ -305,7 +353,7 @@ def sam_prem_bb():
                             # calc bbox width and hight size:
                             w = bbox[2] - bbox[0]
                             h = bbox[3] - bbox[1]
-                            perm_size = int(np.round(np.min([w, h])/10))
+                            perm_size = int(np.round(np.min([w, h])/5))
                             if perm_size == 0:
                                 perm_size = 1
 

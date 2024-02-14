@@ -216,7 +216,7 @@ if __name__ == '__main__':
                 "crf_with_sam": args.crf_with_sam,
             },
             
-            # mode="disabled"
+            mode="disabled"
         )
 
         if args.label_dump_path is not None:
